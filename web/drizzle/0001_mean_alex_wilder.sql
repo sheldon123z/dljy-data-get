@@ -1,0 +1,1 @@
+ALTER TABLE `summaries` ADD `details_json` text DEFAULT '{}' NOT NULL;

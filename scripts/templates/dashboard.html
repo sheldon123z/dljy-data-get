@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#f6f8fb; --panel:#ffffff; --fg:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --accent:#1d4ed8; --accent2:#f97316; --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+  --chip:#eef2ff; --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0a1020; --panel:#111a2e; --fg:#e2e8f0; --muted:#94a3b8; --line:#1e293b;
+         --accent:#60a5fa; --accent2:#fb923c; --chip:#1b2742; --shadow:0 1px 2px rgba(0,0,0,.4); }
+}
+:root[data-theme="light"]{ --bg:#f6f8fb; --panel:#ffffff; --fg:#0f172a; --muted:#64748b; --line:#e2e8f0; --accent:#1d4ed8; --accent2:#f97316; --chip:#eef2ff; }
+:root[data-theme="dark"]{ --bg:#0a1020; --panel:#111a2e; --fg:#e2e8f0; --muted:#94a3b8; --line:#1e293b; --accent:#60a5fa; --accent2:#fb923c; --chip:#1b2742; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 18px 72px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+h1{font-size:22px;margin:0;letter-spacing:.2px}
+.sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);margin-bottom:16px}
+.panel > h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.panel > h2 .tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi span{display:block;color:var(--muted);font-size:12px}
+.kpi b{display:block;font-size:21px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:2px}
+button,select,input[type=text],input[type=password],input[type=number],textarea{
+  font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:6px 10px}
+button{cursor:pointer;transition:.15s}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{filter:brightness(1.08)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:3px 11px;font-size:12.5px;cursor:pointer;user-select:none}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip.off{opacity:.45}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.row label{color:var(--muted);font-size:12.5px}
+.chart{width:100%;overflow-x:auto;position:relative}
+.svg-tooltip{position:absolute;z-index:3;display:none;pointer-events:none;min-width:132px;max-width:280px;
+  padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--fg);
+  box-shadow:var(--shadow);font-size:12px;line-height:1.55;white-space:pre-line;font-variant-numeric:tabular-nums}
+svg{display:block;max-width:100%;height:auto}
+.scroll{overflow-x:auto;max-height:460px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left}
+th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:600;cursor:pointer;z-index:1}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.note{color:var(--muted);font-size:12px;margin-top:8px}
+#log{background:#0b1220;color:#cbd5e1;border-radius:8px;padding:10px 12px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+  max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.token-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.token-row input{flex:1;min-width:260px}
+.control-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-top:14px}
+.control-block{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.control-block h3{font-size:13px;margin:0 0 10px}
+.control-block input[type=text],.control-block input[type=password]{width:100%}
+.control-block textarea{width:100%;min-height:66px;resize:vertical;margin-top:3px}
+.field-grid{display:grid;grid-template-columns:repeat(3,minmax(88px,1fr));gap:8px;margin-bottom:10px}
+.field-grid label,.stack label{color:var(--muted);font-size:12px}
+.field-grid input,.field-grid select{width:100%;margin-top:3px}
+.stack{display:grid;gap:8px}
+#aiSummary{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;white-space:pre-wrap;max-height:260px;overflow:auto}
+.quality-box{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}
+.quality-box strong{font-size:24px;color:var(--ok)}.quality-box.warn strong{color:var(--warn)}.quality-box.bad strong{color:var(--bad)}
+.agent-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.agent-list span{padding:2px 7px;border-radius:999px;background:var(--chip);font-size:11px}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;background:var(--chip);color:var(--accent)}
+.pill.bad{background:rgba(220,38,38,.14);color:var(--bad)}
+.pill.ok{background:rgba(22,163,74,.14);color:var(--ok)}
+.hint{color:var(--muted);font-size:12px;margin-top:8px}
+footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
+.hide{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>全国现货电价看板</h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div class="row" style="margin:0">
+    <button id="themeBtn" title="切换主题">🌓 主题</button>
+    <button id="dlMetaBtn">⬇ 导出元数据</button>
+  </div>
+</header>
+
+<!-- 本地控制台：仅在 serve.py 下显示 -->
+<section class="panel hide" id="console">
+  <h2>网站控制台 <span class="pill" id="tokenState">Authorization 未知</span></h2>
+  <h3 style="margin:0 0 6px">① 填写数据 Authorization</h3>
+  <div class="token-row">
+    <input type="password" id="tokenInput" aria-label="数据采集 Authorization" placeholder="在这里粘贴完整 Authorization；若以 Bearer 开头请全部保留" autocomplete="off">
+    <button id="tokenShow" type="button">显示</button>
+    <button class="primary" id="tokenSave" type="button">保存 Authorization</button>
+  </div>
+  <p class="hint">这是采集接口必需的唯一鉴权项。Authorization 只保存在本机配置中，不会写入看板或导出文件；小程序退出后重新登录可取得新值。</p>
+  <div class="control-grid">
+    <div class="control-block">
+      <h3>② 设置范围并采集</h3>
+      <div class="field-grid">
+        <label>最近天数<input type="number" id="collectDays" min="1" max="366" value="7"></label>
+        <label>强制重采<input type="number" id="refreshDays" min="0" max="366" value="2"></label>
+        <label>并发数<input type="number" id="collectWorkers" min="1" max="8" value="3"></label>
+      </div>
+      <div class="row">
+        <button class="primary" data-task="collect">采集并更新看板</button>
+        <button data-task="weekly">完整刷新与导出</button>
+        <button data-task="backfill">补采所有缺口</button>
+        <button id="reloadDashboard">刷新页面数据</button>
+      </div>
+      <div class="row">
+        <button data-task="json">导出 JSON</button><button data-task="excel">导出 Excel</button>
+        <button data-task="tree">导出分层 Excel</button><button data-task="report">生成规则周报</button>
+        <button data-task="rebuild">仅重建看板</button><button id="stopTask">中止任务</button>
+      </div>
+    </div>
+    <div class="control-block">
+      <h3>③ 配置模型并启用多 Agent 总结</h3>
+      <div class="stack">
+        <label>服务商
+          <select id="llmProvider"><option value="deepseek">DeepSeek</option><option value="glm">智谱 GLM</option><option value="custom">自定义兼容接口</option></select>
+        </label>
+        <label>Base URL<input type="text" id="llmBaseUrl" placeholder="https://api.deepseek.com/v1"></label>
+        <label>模型名称<input type="text" id="llmModel" placeholder="deepseek-chat 或 glm-5.2"></label>
+        <label>API Key<input type="password" id="llmApiKey" placeholder="留空表示保留已保存密钥" autocomplete="off"></label>
+        <label>Agent 协作模式
+          <select id="agentMode">
+            <option value="quick">快速双 Agent（省时省费用）</option>
+            <option value="standard" selected>标准五 Agent（推荐）</option>
+            <option value="rigorous">严格七 Agent（重要汇报）</option>
+          </select>
+        </label>
+        <label>特别关注问题（可选）
+          <textarea id="agentFocus" maxlength="500" placeholder="例如：重点比较西北与华东地区，并检查400元/MWh以上时段"></textarea>
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="llmSave">保存模型配置</button>
+        <button class="primary" data-task="summarize">启动多 Agent 总结</button>
+        <span class="pill" id="llmState">尚未读取配置</span>
+      </div>
+      <div id="summaryQuality"></div>
+      <div id="aiSummary" class="hint">尚未生成多 Agent 总结。</div>
+    </div>
+  </div>
+  <div class="row" style="justify-content:flex-end;margin-top:10px"><button id="shutdownApp">退出 Windows 应用 / 本地服务</button></div>
+  <div id="log">等待任务…</div>
+</section>
+
+<section class="kpis" id="kpis"></section>
+
+<section class="panel">
+  <h2>日均价走势
+    <span class="tools">
+      <button data-png="trendSvg">导出 PNG</button>
+      <button data-csv="trend">导出 CSV</button>
+      <button data-report="seven-day">导出近 7 日总结</button>
+    </span>
+  </h2>
+  <div class="row">
+    <label>指标</label>
+    <select id="trendMetric">
+      <option value="real_time">实时均价</option>
+      <option value="day_ahead">日前均价</option>
+      <option value="spread">实时-日前价差</option>
+    </select>
+    <label>区间</label>
+    <select id="trendRange">
+      <option value="7" selected>近 7 天</option>
+      <option value="30">近 30 天</option>
+      <option value="90">近 90 天</option>
+      <option value="0">全部</option>
+    </select>
+    <button id="trendTop">选取均价前 6</button>
+    <button id="trendClear">清空选择</button>
+  </div>
+  <div class="chips" id="trendChips"></div>
+  <div class="chart" id="trendChart"></div>
+</section>
+
+<section class="panel">
+  <h2>典型日内曲线
+    <span class="tools"><button data-png="intraSvg">导出 PNG</button><button data-csv="intraday">导出 CSV</button></span>
+  </h2>
+  <div class="row">
+    <label>区域</label><select id="intraProvince"></select>
+    <label>月份</label><select id="intraMonth"></select>
+  </div>
+  <div class="chart" id="intraChart"></div>
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i>实时价格</span>
+    <span><i style="background:var(--accent2)"></i>日前价格</span>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>区域均价排行
+    <span class="tools"><button data-png="rankSvg">导出 PNG</button><button data-csv="rank">导出 CSV</button></span>
+  </h2>
+  <div class="row">
+    <label>排序依据</label>
+    <select id="rankMetric">
+      <option value="real_time_avg">实时均价</option>
+      <option value="day_ahead_avg">日前均价</option>
+      <option value="spread_avg">实时-日前价差</option>
+      <option value="negative_realtime_points">实时负价点数</option>
+    </select>
+  </div>
+  <div class="chart" id="rankChart"></div>
+</section>
+
+<section class="panel">
+  <h2>分时实时价格区间分布
+    <span class="tools"><button data-png="distSvg">导出 PNG</button></span>
+  </h2>
+  <div class="row">
+    <label>统计月份</label><select id="distMonth"><option value="all">全部月份</option></select>
+    <label>按 200–400 元/MWh 占比由高到低排序</label>
+  </div>
+  <div class="chart" id="distChart"></div>
+  <div class="legend">
+    <span><i style="background:#7f1d1d"></i>负价</span><span><i style="background:#16a34a"></i>0–100</span>
+    <span><i style="background:#84a82b"></i>100–200</span><span><i style="background:#38a9bf"></i>200–300</span>
+    <span><i style="background:#2563eb"></i>300–400</span><span><i style="background:#f59e0b"></i>400–500</span>
+    <span><i style="background:#dc2626"></i>500 以上</span>
+  </div>
+  <div class="note" id="distAnalysis"></div>
+</section>
+
+<section class="panel">
+  <h2>采集覆盖热力图
+    <span class="tools"><button data-png="heatSvg">导出 PNG</button></span>
+  </h2>
+  <div class="chart" id="heatChart"></div>
+  <div class="legend">
+    <span><i style="background:#16a34a"></i>有数据</span>
+    <span><i style="background:#f59e0b"></i>接口无数据</span>
+    <span><i style="background:#dc2626"></i>请求失败</span>
+    <span><i style="background:#94a3b8"></i>尚未采集</span>
+  </div>
+  <p class="note" id="heatNote"></p>
+</section>
+
+<section class="panel">
+  <h2>区域汇总
+    <span class="tools"><button data-csv="provinces">导出 CSV</button><button id="dlJson">导出 JSON</button></span>
+  </h2>
+  <div class="scroll"><table id="provTable"><thead></thead><tbody></tbody></table></div>
+  <p class="note">点击表头可排序。价格单位：元/MWh。缺失值不按 0 处理。</p>
+</section>
+
+<footer id="footer"></footer>
+</div>
+
+<script>
+const D = __PAYLOAD__;
+const $ = (sel) => document.querySelector(sel);
+const NS = "http://www.w3.org/2000/svg";
+const PALETTE = ["#1d4ed8","#f97316","#16a34a","#db2777","#0891b2","#7c3aed","#ca8a04","#dc2626","#0f766e","#9333ea"];
+
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function el(tag, attrs, text){
+  const node = document.createElementNS(NS, tag);
+  for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, value);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function fmt(value, digits){
+  if (value === null || value === undefined || value === "") return "—";
+  return Number(value).toFixed(digits === undefined ? 2 : digits);
+}
+function nameOf(code){ const p = D.meta.provinces.find(x => x.province_code === code); return p ? p.province : code; }
+
+/* ------------------------------------------------------------------ 顶部 */
+function renderHeader(){
+  const m = D.meta;
+  $("#subtitle").textContent =
+    `数据区间 ${m.start_date} ~ ${m.end_date}｜${m.region_count} 个价格区域｜`
+    + `更新于 ${(m.updated_at || "").replace("T", " ").slice(0, 16)}｜单位 元/MWh`;
+  $("#footer").textContent =
+    `数据来源：电查查小程序公开接口。生成于 ${(D.generated_at || "").replace("T", " ").slice(0, 19)}。`;
+  const cover = (m.coverage * 100).toFixed(1) + "%";
+  const withData = D.provinces.filter(p => p.point_count > 0).length;
+  const rt = D.provinces.filter(p => p.real_time_avg !== null);
+  const avgRt = rt.length ? rt.reduce((s, p) => s + p.real_time_avg, 0) / rt.length : null;
+  const neg = D.provinces.reduce((s, p) => s + (p.negative_realtime_points || 0), 0);
+  const cards = [
+    ["有数据区域", `${withData} / ${m.region_count}`, "point_count > 0"],
+    ["区域日完整度", cover, `${m.available_region_days} / ${m.expected_region_days}`],
+    ["分时样本点", (m.detail_rows || 0).toLocaleString("zh-CN"), "去重后"],
+    ["全网实时均价", fmt(avgRt), "各区域简单平均"],
+    ["实时负价点", neg.toLocaleString("zh-CN"), "价格 < 0"],
+    ["待补采区域日", ((m.missing_region_days || 0) + (m.failed_region_days || 0)).toLocaleString("zh-CN"), "missing + failed"],
+  ];
+  $("#kpis").innerHTML = cards
+    .map(([label, value, hint]) => `<div class="kpi"><span>${label}</span><b>${value}</b><span>${hint}</span></div>`)
+    .join("");
+}
+
+/* ------------------------------------------------------------------ 折线图 */
+let trendSelected = [];
+function seriesValues(code, metric){
+  const s = D.series[code];
+  if (!s) return [];
+  if (metric === "spread") {
+    return s.rt.map((v, i) => (v === null || s.da[i] === null ? null : +(v - s.da[i]).toFixed(2)));
+  }
+  return metric === "day_ahead" ? s.da : s.rt;
+}
+function addLineTooltip(host, svg, options){
+  const tip = document.createElement("div");
+  tip.className = "svg-tooltip"; host.appendChild(tip);
+  const guide = el("line", {stroke:cssVar("--muted"), "stroke-width":1, "stroke-dasharray":"3 3", visibility:"hidden"});
+  svg.appendChild(guide);
+  svg.addEventListener("mousemove", event => {
+    const rect = svg.getBoundingClientRect();
+    const svgX = (event.clientX - rect.left) * options.width / rect.width;
+    const index = Math.round((svgX - options.left) / (options.width - options.left - options.right) * (options.count - 1));
+    if (index < 0 || index >= options.count){ tip.style.display = "none"; guide.setAttribute("visibility", "hidden"); return; }
+    const info = options.at(index), px = options.x(index);
+    guide.setAttribute("x1", px); guide.setAttribute("x2", px); guide.setAttribute("y1", options.top); guide.setAttribute("y2", options.bottom); guide.setAttribute("visibility", "visible");
+    tip.textContent = [info.title, ...info.lines].join("\n"); tip.style.display = "block";
+    const hostRect = host.getBoundingClientRect();
+    tip.style.left = Math.max(host.scrollLeft + 6, Math.min(event.clientX - hostRect.left + host.scrollLeft + 14, host.scrollLeft + host.clientWidth - tip.offsetWidth - 6)) + "px";
+    tip.style.top = Math.max(6, event.clientY - hostRect.top - tip.offsetHeight - 12) + "px";
+  });
+  svg.addEventListener("mouseleave", () => { tip.style.display = "none"; guide.setAttribute("visibility", "hidden"); });
+}
+function renderTrendChips(){
+  const box = $("#trendChips");
+  box.innerHTML = "";
+  D.meta.provinces.forEach(p => {
+    const has = D.series[p.province_code] && D.series[p.province_code].rt.some(v => v !== null);
+    const chip = document.createElement("button");
+    chip.className = "chip" + (has ? "" : " off");
+    chip.type = "button";
+    chip.textContent = p.province;
+    chip.disabled = !has;
+    chip.setAttribute("aria-pressed", trendSelected.includes(p.province_code));
+    chip.onclick = () => {
+      const i = trendSelected.indexOf(p.province_code);
+      if (i >= 0) trendSelected.splice(i, 1); else trendSelected.push(p.province_code);
+      renderTrendChips(); renderTrend();
+    };
+    box.appendChild(chip);
+  });
+}
+function trendWindow(){
+  const range = +$("#trendRange").value;
+  return range > 0 ? D.dates.slice(-range) : D.dates;
+}
+function renderTrend(){
+  const host = $("#trendChart");
+  host.innerHTML = "";
+  const dates = trendWindow();
+  const offset = D.dates.length - dates.length;
+  const metric = $("#trendMetric").value;
+  if (!trendSelected.length){
+    host.innerHTML = '<p class="note">请选择至少一个区域。</p>';
+    return;
+  }
+  const lines = trendSelected.map((code, i) => ({
+    code, name: nameOf(code), color: PALETTE[i % PALETTE.length],
+    values: seriesValues(code, metric).slice(offset),
+  }));
+  const flat = lines.flatMap(l => l.values).filter(v => v !== null);
+  if (!flat.length){ host.innerHTML = '<p class="note">所选区域在该区间内没有数据。</p>'; return; }
+  const W = 1080, H = 380, L = 62, R = 18, T = 20, B = 52;
+  let lo = Math.min(...flat), hi = Math.max(...flat);
+  if (lo === hi){ lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const x = i => L + (dates.length === 1 ? 0 : i * (W - L - R) / (dates.length - 1));
+  const y = v => H - B - (v - lo) / (hi - lo) * (H - T - B);
+  const fg = cssVar("--fg"), muted = cssVar("--muted"), line = cssVar("--line");
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"trendSvg", "font-family":"sans-serif"});
+
+  for (let k = 0; k <= 4; k++){
+    const value = lo + (hi - lo) * k / 4, yy = y(value);
+    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:line, "stroke-width":1}));
+    svg.appendChild(el("text", {x:L-8, y:yy+4, "font-size":11, fill:muted, "text-anchor":"end"}, value.toFixed(0)));
+  }
+  const step = Math.max(1, Math.ceil(dates.length / 9));
+  dates.forEach((d, i) => {
+    if (i % step && i !== dates.length - 1) return;
+    svg.appendChild(el("text", {x:x(i), y:H-B+18, "font-size":11, fill:muted, "text-anchor":"middle"}, d.slice(5)));
+  });
+  lines.forEach(l => {
+    let path = "", pen = false;
+    l.values.forEach((v, i) => {
+      if (v === null){ pen = false; return; }
+      path += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1);
+      pen = true;
+    });
+    if (path) svg.appendChild(el("path", {d:path.trim(), fill:"none", stroke:l.color, "stroke-width":2, "stroke-linejoin":"round"}));
+  });
+  let lx = L;
+  lines.forEach(l => {
+    svg.appendChild(el("rect", {x:lx, y:H-16, width:11, height:11, rx:2, fill:l.color}));
+    const label = el("text", {x:lx+16, y:H-6, "font-size":12, fill:fg}, l.name);
+    svg.appendChild(label);
+    lx += 30 + l.name.length * 13;
+  });
+  svg.appendChild(el("text", {x:L, y:T-4, "font-size":11, fill:muted},
+    ({real_time:"实时均价", day_ahead:"日前均价", spread:"实时-日前价差"})[metric] + "（元/MWh）"));
+  host.appendChild(svg);
+  addLineTooltip(host, svg, {width:W, left:L, right:R, top:T, bottom:H-B, count:dates.length, x,
+    at:i => ({title:dates[i], lines:lines.map(l => `${l.name}：${fmt(l.values[i])} 元/MWh`)})});
+}
+
+/* ------------------------------------------------------------------ 日内曲线 */
+function renderIntraday(){
+  const host = $("#intraChart");
+  host.innerHTML = "";
+  const code = $("#intraProvince").value, month = $("#intraMonth").value;
+  const entry = (D.profiles[code] || {})[month];
+  if (!entry){ host.innerHTML = '<p class="note">该区域该月份没有数据。</p>'; return; }
+  const flat = entry.real_time.concat(entry.day_ahead).filter(v => v !== null && v !== undefined);
+  if (!flat.length){ host.innerHTML = '<p class="note">该区域该月份没有价格。</p>'; return; }
+  const W = 1080, H = 340, L = 62, R = 18, T = 20, B = 48;
+  let lo = Math.min(...flat), hi = Math.max(...flat);
+  if (lo === hi){ lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+  const n = entry.slots.length;
+  const x = i => L + (n === 1 ? 0 : i * (W - L - R) / (n - 1));
+  const y = v => H - B - (v - lo) / (hi - lo) * (H - T - B);
+  const muted = cssVar("--muted"), line = cssVar("--line");
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"intraSvg", "font-family":"sans-serif"});
+  for (let k = 0; k <= 4; k++){
+    const value = lo + (hi - lo) * k / 4, yy = y(value);
+    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:line, "stroke-width":1}));
+    svg.appendChild(el("text", {x:L-8, y:yy+4, "font-size":11, fill:muted, "text-anchor":"end"}, value.toFixed(0)));
+  }
+  const step = Math.max(1, Math.ceil(n / 12));
+  entry.slots.forEach((slot, i) => {
+    if (i % step && i !== n - 1) return;
+    svg.appendChild(el("text", {x:x(i), y:H-B+18, "font-size":11, fill:muted, "text-anchor":"middle"}, slot));
+  });
+  [["day_ahead", cssVar("--accent2")], ["real_time", cssVar("--accent")]].forEach(([key, color]) => {
+    let path = "", pen = false;
+    entry[key].forEach((v, i) => {
+      if (v === null || v === undefined){ pen = false; return; }
+      path += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1);
+      pen = true;
+    });
+    if (path) svg.appendChild(el("path", {d:path.trim(), fill:"none", stroke:color, "stroke-width":2.4, "stroke-linejoin":"round"}));
+  });
+  svg.appendChild(el("text", {x:L, y:T-4, "font-size":11, fill:muted},
+    `${nameOf(code)} ${month} 月均日内曲线（${n} 点，元/MWh）`));
+  host.appendChild(svg);
+  addLineTooltip(host, svg, {width:W, left:L, right:R, top:T, bottom:H-B, count:n, x,
+    at:i => ({title:entry.slots[i], lines:[`实时价格：${fmt(entry.real_time[i])} 元/MWh`, `日前价格：${fmt(entry.day_ahead[i])} 元/MWh`]})});
+}
+
+/* ------------------------------------------------------------------ 排行 */
+function rankRows(){
+  const key = $("#rankMetric").value;
+  return D.provinces
+    .filter(p => p[key] !== null && p[key] !== undefined && p.point_count > 0)
+    .sort((a, b) => b[key] - a[key]);
+}
+function renderRank(){
+  const host = $("#rankChart");
+  host.innerHTML = "";
+  const key = $("#rankMetric").value;
+  const rows = rankRows();
+  if (!rows.length){ host.innerHTML = '<p class="note">暂无数据。</p>'; return; }
+  const W = 1080, rowH = 26, L = 92, R = 74, T = 16;
+  const H = T + rows.length * rowH + 12;
+  const values = rows.map(r => r[key]);
+  const hi = Math.max(...values, 0), lo = Math.min(...values, 0);
+  const span = (hi - lo) || 1;
+  const zero = L + (0 - lo) / span * (W - L - R);
+  const fg = cssVar("--fg"), muted = cssVar("--muted");
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"rankSvg", "font-family":"sans-serif"});
+  rows.forEach((r, i) => {
+    const yy = T + i * rowH;
+    const value = r[key];
+    const px = L + (value - lo) / span * (W - L - R);
+    const x0 = Math.min(zero, px), width = Math.abs(px - zero);
+    svg.appendChild(el("text", {x:L-10, y:yy+15, "font-size":12, fill:fg, "text-anchor":"end"}, r.province));
+    const bar = el("rect", {x:x0, y:yy+4, width:Math.max(width, 1), height:rowH-10, rx:3,
+      fill: value < 0 ? cssVar("--accent2") : cssVar("--accent")});
+    bar.appendChild(el("title", {}, `${r.province}\n${$("#rankMetric").selectedOptions[0].textContent}：${fmt(value)}`));
+    svg.appendChild(bar);
+    svg.appendChild(el("text", {x:Math.max(px, zero)+6, y:yy+15, "font-size":11.5, fill:muted},
+      key === "negative_realtime_points" ? String(value) : value.toFixed(1)));
+  });
+  host.appendChild(svg);
+}
+
+/* ------------------------------------------------------------------ 分时价格区间 */
+const PRICE_BANDS = [
+  ["negative", "负价", "#7f1d1d"], ["0_100", "0–100", "#16a34a"], ["100_200", "100–200", "#84a82b"],
+  ["200_300", "200–300", "#38a9bf"], ["300_400", "300–400", "#2563eb"], ["400_500", "400–500", "#f59e0b"], ["500_plus", "500 以上", "#dc2626"],
+];
+function distributionRows(){
+  const month = $("#distMonth").value;
+  return D.meta.provinces.map(p => {
+    const buckets = D.price_distribution?.[p.province_code] || {};
+    const months = month === "all" ? Object.keys(buckets) : [month];
+    const counts = Object.fromEntries(PRICE_BANDS.map(([key]) => [key, 0]));
+    months.forEach(item => PRICE_BANDS.forEach(([key]) => counts[key] += buckets[item]?.[key] || 0));
+    const samples = Object.values(counts).reduce((sum, value) => sum + value, 0);
+    const shares = Object.fromEntries(PRICE_BANDS.map(([key]) => [key, samples ? counts[key] / samples * 100 : 0]));
+    return {province:p.province, counts, shares, samples,
+      mid:shares["200_300"] + shares["300_400"], low:shares.negative + shares["0_100"] + shares["100_200"], high:shares["400_500"] + shares["500_plus"]};
+  }).filter(row => row.samples).sort((a, b) => b.mid - a.mid);
+}
+function regionNames(rows, max = 6){
+  const names = rows.map(row => row.province);
+  return names.length > max ? `${names.slice(0, max).join("、")}等 ${names.length} 个地区` : names.join("、");
+}
+function renderDistributionAnalysis(rows){
+  const host = $("#distAnalysis");
+  if (!rows.length){ host.textContent = "暂无可用于区间统计的实时分时价格数据。"; return; }
+  const total = rows.reduce((sum, row) => sum + row.samples, 0);
+  const share = key => rows.reduce((sum, row) => sum + row.counts[key], 0) / total * 100;
+  const mid = rows.filter(row => row.mid >= 50), low = rows.filter(row => row.low >= 50), high = rows.filter(row => row.high >= 15), neg = rows.filter(row => row.shares.negative >= 1);
+  const period = $("#distMonth").value === "all" ? "全部已采集月份" : $("#distMonth").value;
+  host.innerHTML = [
+    `统计口径：${period}的全量实时分时价格明细，共 ${total.toLocaleString("zh-CN")} 个样本；缺失值不按 0 处理。全国样本中，200–400 元/MWh区间占 ${ (share("200_300") + share("300_400")).toFixed(1)}%，400 元/MWh以上占 ${(share("400_500") + share("500_plus")).toFixed(1)}%。`,
+    mid.length ? `以 200–400 元/MWh为主的地区：${regionNames(mid)}，该区间占比均不低于 50%。` : "没有地区的 200–400 元/MWh占比达到 50%。",
+    low.length ? `低价时段（200 元/MWh以下）占比较高的地区：${regionNames(low)}。建议结合负荷、新能源出力和市场规则进一步研判成因。` : "各地区 200 元/MWh以下时段占比整体不高。",
+    high.length ? `400 元/MWh以上时段占比较高的地区：${regionNames(high)}，反映出较多高价运行时段。` : "各地区 400 元/MWh以上时段占比均不足 15%。",
+    neg.length ? `负价时段占比超过 1%的地区：${regionNames(neg)}。` : "各地区负价时段占比均不超过 1%。",
+  ].map(text => `<p>${text}</p>`).join("");
+}
+function renderDistribution(){
+  const host = $("#distChart"); host.innerHTML = "";
+  const rows = distributionRows();
+  if (!rows.length){ host.innerHTML = '<p class="note">暂无可用于区间统计的实时分时价格数据。</p>'; renderDistributionAnalysis(rows); return; }
+  const W = 1080, L = 88, R = 22, T = 28, B = 30, rowH = 27, H = T + rows.length * rowH + B;
+  const fg = cssVar("--fg"), muted = cssVar("--muted"), line = cssVar("--line"), plotW = W-L-R;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"distSvg", "font-family":"sans-serif"});
+  for (let tick = 0; tick <= 100; tick += 20){
+    const xx = L + tick / 100 * plotW;
+    svg.appendChild(el("line", {x1:xx, y1:T-8, x2:xx, y2:H-B, stroke:line, "stroke-width":1}));
+    svg.appendChild(el("text", {x:xx, y:H-8, "font-size":10.5, fill:muted, "text-anchor":"middle"}, `${tick}%`));
+  }
+  rows.forEach((row, index) => {
+    const yy = T + index * rowH;
+    svg.appendChild(el("text", {x:L-8, y:yy+16, "font-size":12, fill:fg, "text-anchor":"end"}, row.province));
+    let offset = L;
+    PRICE_BANDS.forEach(([key, , color]) => {
+      const width = row.shares[key] / 100 * plotW;
+      if (width) svg.appendChild(el("rect", {x:offset, y:yy+4, width, height:rowH-9, rx:1, fill:color}));
+      offset += width;
+    });
+    const detail = PRICE_BANDS.map(([key, label]) => `${label}：${row.shares[key].toFixed(1)}%（${row.counts[key]} 点）`).join("\n");
+    const hit = el("rect", {x:L, y:yy+2, width:plotW, height:rowH-5, fill:"transparent"});
+    hit.appendChild(el("title", {}, `${row.province}\n样本：${row.samples.toLocaleString("zh-CN")} 点\n${detail}`)); svg.appendChild(hit);
+  });
+  svg.appendChild(el("text", {x:L, y:13, "font-size":11, fill:muted}, "各区间占比（悬停查看详细数值）"));
+  host.appendChild(svg); renderDistributionAnalysis(rows);
+}
+
+/* ------------------------------------------------------------------ 热力图 */
+const HEAT = {A:"#16a34a", E:"#f59e0b", F:"#dc2626", "-":"#94a3b8"};
+function renderHeat(){
+  const host = $("#heatChart");
+  host.innerHTML = "";
+  const rows = D.coverage.rows, dates = D.coverage.dates;
+  const cell = Math.max(2, Math.min(6, Math.floor(940 / dates.length)));
+  const L = 78, T = 22, rowH = 15;
+  const W = L + dates.length * cell + 16, H = T + rows.length * rowH + 26;
+  const muted = cssVar("--muted"), fg = cssVar("--fg");
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"heatSvg", "font-family":"sans-serif"});
+  let lastMonth = "";
+  dates.forEach((d, i) => {
+    const month = d.slice(0, 7);
+    if (month !== lastMonth){
+      lastMonth = month;
+      svg.appendChild(el("text", {x:L + i*cell, y:T-7, "font-size":10.5, fill:muted}, month.slice(2)));
+    }
+  });
+  rows.forEach((r, ri) => {
+    const yy = T + ri * rowH;
+    svg.appendChild(el("text", {x:L-8, y:yy+11, "font-size":11, fill:fg, "text-anchor":"end"}, r.province));
+    for (let i = 0; i < dates.length; i++){
+      const code = r.series[i] || "-";
+      const rect = el("rect", {x:L+i*cell, y:yy+2, width:Math.max(cell-0.5, 1.5), height:rowH-4, fill:HEAT[code] || "#94a3b8"});
+      rect.appendChild(el("title", {}, `${r.province} ${dates[i]} ${D.coverage.status_codes[code] || code}`));
+      svg.appendChild(rect);
+    }
+  });
+  host.appendChild(svg);
+  const missing = rows.reduce((sum, r) => sum + (r.series.match(/-/g) || []).length, 0);
+  const failed = rows.reduce((sum, r) => sum + (r.series.match(/F/g) || []).length, 0);
+  $("#heatNote").textContent =
+    `共 ${rows.length} × ${dates.length} 个区域日；尚未采集 ${missing} 个，请求失败 ${failed} 个。悬停方块可看详情。`;
+}
+
+/* ------------------------------------------------------------------ 表格 */
+const TABLE_COLS = [
+  ["province","区域",0],["province_code","区域代码",0],["coverage","覆盖率",1],
+  ["available_days","有数据天数",1],["missing_days","未采天数",1],["dominant_points_per_day","日内点数",1],
+  ["point_count","样本点",1],["day_ahead_avg","日前均价",1],["real_time_avg","实时均价",1],
+  ["spread_avg","价差",1],["real_time_min","实时最低",1],["real_time_max","实时最高",1],
+  ["negative_realtime_points","负价点",1],["zero_realtime_points","零价点",1],
+];
+let sortKey = "real_time_avg", sortDesc = true;
+function renderTable(){
+  const thead = $("#provTable thead"), tbody = $("#provTable tbody");
+  thead.innerHTML = "<tr>" + TABLE_COLS.map(([key, label, num]) =>
+    `<th class="${num ? "num" : ""}" data-key="${key}">${label}${sortKey === key ? (sortDesc ? " ↓" : " ↑") : ""}</th>`).join("") + "</tr>";
+  thead.querySelectorAll("th").forEach(th => th.onclick = () => {
+    const key = th.dataset.key;
+    if (key === sortKey) sortDesc = !sortDesc; else { sortKey = key; sortDesc = true; }
+    renderTable();
+  });
+  const rows = D.provinces.slice().sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    const cmp = typeof va === "number" ? va - vb : String(va).localeCompare(String(vb), "zh");
+    return sortDesc ? -cmp : cmp;
+  });
+  tbody.innerHTML = rows.map(r => "<tr>" + TABLE_COLS.map(([key, , num]) => {
+    let value = r[key];
+    if (key === "coverage" && typeof value === "number") value = (value * 100).toFixed(1) + "%";
+    else if (num && typeof value === "number") value = Number.isInteger(value) ? value : value.toFixed(2);
+    else if (value === null || value === undefined || value === "") value = "—";
+    return `<td class="${num ? "num" : ""}">${value}</td>`;
+  }).join("") + "</tr>").join("");
+}
+
+/* ------------------------------------------------------------------ 导出 */
+function download(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function exportPng(svgId, filename){
+  const svg = document.getElementById(svgId);
+  if (!svg){ alert("请先生成图表"); return; }
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", NS);
+  const width = +svg.getAttribute("width"), height = +svg.getAttribute("height");
+  const scale = 2;
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("x", 0); bg.setAttribute("y", 0);
+  bg.setAttribute("width", width); bg.setAttribute("height", height);
+  bg.setAttribute("fill", cssVar("--panel") || "#ffffff");
+  clone.insertBefore(bg, clone.firstChild);
+  const text = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([text], {type:"image/svg+xml;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale; canvas.height = height * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob(b => { download(b, filename); URL.revokeObjectURL(url); }, "image/png");
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); alert("导出失败，请改用浏览器截图。"); };
+  img.src = url;
+}
+function toCsv(headers, rows){
+  const escape = v => {
+    const s = (v === null || v === undefined) ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return "﻿" + [headers.join(","), ...rows.map(r => r.map(escape).join(","))].join("\n");
+}
+function exportCsv(kind){
+  let headers, rows, name;
+  if (kind === "provinces"){
+    headers = TABLE_COLS.map(c => c[1]);
+    rows = D.provinces.map(p => TABLE_COLS.map(c => p[c[0]]));
+    name = "区域汇总.csv";
+  } else if (kind === "trend"){
+    const dates = trendWindow(), offset = D.dates.length - dates.length;
+    const metric = $("#trendMetric").value;
+    const codes = trendSelected.length ? trendSelected : D.meta.provinces.map(p => p.province_code);
+    headers = ["交易日期", ...codes.map(nameOf)];
+    const cols = codes.map(c => seriesValues(c, metric).slice(offset));
+    rows = dates.map((d, i) => [d, ...cols.map(col => col[i])]);
+    name = `日均价_${metric}.csv`;
+  } else if (kind === "intraday"){
+    const code = $("#intraProvince").value, month = $("#intraMonth").value;
+    const entry = (D.profiles[code] || {})[month] || {slots:[], day_ahead:[], real_time:[]};
+    headers = ["时点", "日前价格", "实时价格"];
+    rows = entry.slots.map((s, i) => [s, entry.day_ahead[i], entry.real_time[i]]);
+    name = `日内曲线_${nameOf(code)}_${month}.csv`;
+  } else {
+    const key = $("#rankMetric").value;
+    const label = $("#rankMetric").selectedOptions[0].textContent;
+    headers = ["区域", "区域代码", label];
+    rows = rankRows().map(r => [r.province, r.province_code, r[key]]);
+    name = `区域排行_${label}.csv`;
+  }
+  download(new Blob([toCsv(headers, rows)], {type:"text/csv;charset=utf-8"}), name);
+}
+function average(values){
+  const valid = values.filter(value => typeof value === "number" && Number.isFinite(value));
+  return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null;
+}
+function reportNumber(value){ return value === null || value === undefined ? "—" : Number(value).toFixed(2); }
+function buildSevenDayReport(){
+  const dates = D.dates.slice(-7), start = D.dates.length - dates.length, codes = D.meta.provinces.map(p => p.province_code);
+  const daily = dates.map((date, offset) => {
+    const index = start + offset, rt = average(codes.map(code => seriesValues(code, "real_time")[index])), da = average(codes.map(code => seriesValues(code, "day_ahead")[index]));
+    return {date, rt, da, regions:codes.filter(code => seriesValues(code, "real_time")[index] !== null).length};
+  });
+  const regions = D.meta.provinces.map(p => {
+    const rt = seriesValues(p.province_code, "real_time"), da = seriesValues(p.province_code, "day_ahead"), current = rt.slice(start), prior = rt.slice(Math.max(0, start - 7), start);
+    const valid = current.filter(v => v !== null), first = valid[0], last = valid[valid.length - 1], currentAvg = average(current), priorAvg = average(prior);
+    return {name:p.province, days:valid.length, rt:currentAvg, da:average(da.slice(start)), change:currentAvg === null || priorAvg === null ? null : currentAvg-priorAvg, trend:first === undefined || last === undefined ? null : last-first};
+  }).sort((a,b) => (b.rt ?? -Infinity) - (a.rt ?? -Infinity));
+  const avgRt = average(daily.map(day => day.rt)), avgDa = average(daily.map(day => day.da));
+  const trend = daily.filter(day => day.rt !== null).map(day => day.rt); const run = trend.length > 1 ? trend.at(-1) - trend[0] : null;
+  const dailyRows = daily.map(day => `<tr><td>${day.date}</td><td>${reportNumber(day.rt)}</td><td>${reportNumber(day.da)}</td><td>${day.rt === null || day.da === null ? "—" : reportNumber(day.rt-day.da)}</td><td>${day.regions}</td></tr>`).join("");
+  const regionRows = regions.map(row => `<tr><td>${row.name}</td><td>${row.days}/7</td><td>${reportNumber(row.rt)}</td><td>${reportNumber(row.da)}</td><td>${reportNumber(row.change)}</td><td>${reportNumber(row.trend)}</td></tr>`).join("");
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>近7日现货价格总结</title><style>body{max-width:980px;margin:30px auto;color:#172033;font:14px/1.65 "Microsoft YaHei",sans-serif}h1{font-size:25px}h2{margin-top:28px;border-left:4px solid #1d4ed8;padding-left:9px;font-size:17px}.k{display:flex;gap:12px}.k div{border:1px solid #dbe3ef;border-radius:8px;padding:10px 14px;min-width:150px}.k span{display:block;color:#64748b;font-size:12px}.k b{font-size:19px}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{border-bottom:1px solid #e2e8f0;padding:7px;text-align:right}th{background:#f8fafc}th:first-child,td:first-child{text-align:left}.note{color:#64748b;font-size:12px}</style><body><h1>全国现货电价近 7 日总结报告</h1><p>统计区间：${dates[0]} 至 ${dates.at(-1)}；生成时间：${new Date().toLocaleString("zh-CN")}</p><h2>全国概览</h2><div class="k"><div><span>实时均价（等权）</span><b>${reportNumber(avgRt)} 元/MWh</b></div><div><span>日前均价（等权）</span><b>${reportNumber(avgDa)} 元/MWh</b></div><div><span>区间首末变化</span><b>${reportNumber(run)} 元/MWh</b></div></div><p>最近 7 日全国实时均价整体${run === null ? "数据不足" : Math.abs(run) < 5 ? "基本持平" : run > 0 ? "上涨" : "下跌"}。以下汇总各区域实时与日前价格、相较前 7 日的变化及区间首末变化。</p><h2>每日全国均价</h2><table><tr><th>日期</th><th>实时均价</th><th>日前均价</th><th>实时-日前</th><th>有数据区域</th></tr>${dailyRows}</table><h2>各区域价格情况</h2><table><tr><th>区域</th><th>样本天数</th><th>实时均价</th><th>日前均价</th><th>较前 7 日</th><th>首末变化</th></tr>${regionRows}</table><p class="note">价格单位：元/MWh。全国均价为各有数据区域日均价的等权平均；缺失值不按 0 处理。</p></body></html>`;
+}
+function exportSevenDayReport(){
+  if (!D.dates.length) return;
+  download(new Blob([buildSevenDayReport()], {type:"text/html;charset=utf-8"}), `近7日现货价格总结_${D.dates.at(-1)}.html`);
+}
+
+/* ------------------------------------------------------------------ 本地控制台 */
+let polling = null;
+function setupConsole(){
+  if (!D.live) return;
+  $("#console").classList.remove("hide");
+  const headers = () => ({"Content-Type":"application/json", "X-Session": D.session});
+  const request = (url, options = {}) => fetch(url, {...options, headers:{...headers(), ...(options.headers || {})}})
+    .then(async response => {
+      const info = await response.json();
+      if (!response.ok) throw new Error(info.error || `HTTP ${response.status}`);
+      return info;
+    });
+  const setState = (info) => {
+    const pill = $("#tokenState");
+    pill.textContent = info.token_set ? `令牌已保存 ${info.token_masked}` : "尚未设置令牌";
+    pill.className = "pill " + (info.token_set ? "ok" : "bad");
+  };
+  const setLlmState = info => {
+    $("#llmProvider").value = info.provider || "custom";
+    $("#llmBaseUrl").value = info.base_url || "";
+    $("#llmModel").value = info.model || "";
+    $("#llmApiKey").placeholder = info.api_key_set ? `已保存 ${info.api_key_masked}；留空则不修改` : "请输入 API Key";
+    $("#llmState").textContent = info.api_key_set ? "模型密钥已保存" : "尚未保存模型密钥";
+    $("#llmState").className = "pill " + (info.api_key_set ? "ok" : "bad");
+  };
+  const renderSummaryInfo = info => {
+    const qualityHost = $("#summaryQuality");
+    qualityHost.innerHTML = "";
+    if (!info.available){
+      $("#aiSummary").textContent = "尚未生成多 Agent 总结。";
+      return;
+    }
+    const reliability = info.reliability || {};
+    if (reliability.grade){
+      const box = document.createElement("div");
+      box.className = "quality-box " + (reliability.grade === "A" ? "" : reliability.grade === "D" ? "bad" : "warn");
+      const grade = document.createElement("strong");
+      grade.textContent = `${reliability.grade}级`;
+      const detail = document.createElement("div");
+      detail.textContent = `可靠性 ${reliability.score} 分｜区域日覆盖 ${reliability.coverage_rate}%｜有效分时时点 ${reliability.finite_real_time_points}`;
+      box.append(grade, detail);
+      const agents = document.createElement("div");
+      agents.className = "agent-list";
+      (info.agents || []).forEach(item => {
+        const badge = document.createElement("span");
+        badge.textContent = item.name || item.role;
+        agents.appendChild(badge);
+      });
+      if (agents.childNodes.length){
+        const spacer = document.createElement("span");
+        spacer.textContent = "";
+        box.append(spacer, agents);
+      }
+      qualityHost.appendChild(box);
+    }
+    $("#aiSummary").textContent = `${info.title}\n\n${info.summary}`;
+  };
+  const loadSummary = () => request("/api/summary/latest").then(info => {
+    renderSummaryInfo(info);
+  }).catch(() => {});
+  request("/api/status").then(setState).catch(() => {});
+  request("/api/llm/config").then(setLlmState).catch(() => {});
+  loadSummary();
+  $("#tokenShow").onclick = () => {
+    const input = $("#tokenInput");
+    input.type = input.type === "password" ? "text" : "password";
+  };
+  $("#tokenSave").onclick = () => {
+    const value = $("#tokenInput").value.trim();
+    if (!value){ alert("请先粘贴令牌"); return; }
+    request("/api/token", {method:"POST", body:JSON.stringify({token:value})})
+      .then(info => { $("#tokenInput").value = ""; setState(info); appendLog("令牌已写入 .env"); })
+      .catch(e => alert("保存失败：" + e));
+  };
+  const presets = {
+    deepseek:{base_url:"https://api.deepseek.com/v1", model:"deepseek-chat"},
+    glm:{base_url:"https://open.bigmodel.cn/api/paas/v4", model:"glm-5.2"},
+  };
+  $("#llmProvider").onchange = () => {
+    const preset = presets[$("#llmProvider").value];
+    if (preset){ $("#llmBaseUrl").value = preset.base_url; $("#llmModel").value = preset.model; }
+  };
+  $("#llmSave").onclick = () => {
+    const payload = {
+      provider:$("#llmProvider").value,
+      base_url:$("#llmBaseUrl").value.trim(),
+      model:$("#llmModel").value.trim(),
+    };
+    const key = $("#llmApiKey").value.trim();
+    if (key) payload.api_key = key;
+    request("/api/llm/config", {method:"POST", body:JSON.stringify(payload)})
+      .then(info => { $("#llmApiKey").value = ""; setLlmState(info); appendLog("大模型配置已保存"); })
+      .catch(e => alert("模型配置保存失败：" + e.message));
+  };
+  const taskOptions = task => ({
+    task,
+    days:+$("#collectDays").value,
+    refresh_days:+$("#refreshDays").value,
+    workers:+$("#collectWorkers").value,
+    agent_mode:$("#agentMode").value,
+    focus:$("#agentFocus").value.trim(),
+  });
+  document.querySelectorAll("[data-task]").forEach(btn => {
+    btn.onclick = () => {
+      request("/api/run", {method:"POST", body:JSON.stringify(taskOptions(btn.dataset.task))})
+        .then(info => { appendLog("▶ " + info.command); startPolling(); })
+        .catch(e => alert("启动失败：" + e.message));
+    };
+  });
+  $("#reloadDashboard").onclick = () => location.reload();
+  $("#stopTask").onclick = () => request("/api/stop", {method:"POST"}).then(() => appendLog("已请求中止"));
+  $("#shutdownApp").onclick = () => {
+    if (!confirm("确定退出本地应用？正在执行的任务会停止。")) return;
+    request("/api/shutdown", {method:"POST"})
+      .then(() => { document.body.innerHTML = '<main style="max-width:520px;margin:80px auto;font-family:Microsoft YaHei"><h1>应用已退出</h1><p>现在可以关闭此页面。</p></main>'; })
+      .catch(e => alert("退出失败：" + e.message));
+  };
+  startPolling();
+}
+function appendLog(text){
+  const box = $("#log");
+  box.textContent += (box.textContent.endsWith("\n") || !box.textContent ? "" : "\n") + text + "\n";
+  box.scrollTop = box.scrollHeight;
+}
+function startPolling(){
+  if (polling) return;
+  polling = setInterval(() => {
+    fetch("/api/logs", {headers:{"X-Session": D.session}})
+      .then(r => r.json())
+      .then(info => {
+        $("#log").textContent = info.log || "等待任务…";
+        $("#log").scrollTop = $("#log").scrollHeight;
+        document.querySelectorAll("[data-task]").forEach(b => b.disabled = info.running);
+        if (!info.running){
+          clearInterval(polling); polling = null;
+          fetch("/api/summary/latest", {headers:{"X-Session":D.session}})
+            .then(r => r.json()).then(renderSummaryInfo).catch(() => {});
+        }
+      })
+      .catch(() => { clearInterval(polling); polling = null; });
+  }, 1200);
+}
+
+/* ------------------------------------------------------------------ 启动 */
+function boot(){
+  renderHeader();
+  const withData = D.meta.provinces.filter(p => D.series[p.province_code]
+    && D.series[p.province_code].rt.some(v => v !== null));
+  trendSelected = withData
+    .slice()
+    .sort((a, b) => {
+      const pa = D.provinces.find(x => x.province_code === a.province_code) || {};
+      const pb = D.provinces.find(x => x.province_code === b.province_code) || {};
+      return (pb.real_time_avg || 0) - (pa.real_time_avg || 0);
+    })
+    .slice(0, 5)
+    .map(p => p.province_code);
+  renderTrendChips();
+  renderTrend();
+
+  const provSel = $("#intraProvince");
+  withData.forEach(p => provSel.appendChild(new Option(p.province, p.province_code)));
+  const fillMonths = () => {
+    const monthSel = $("#intraMonth");
+    const months = Object.keys(D.profiles[provSel.value] || {}).sort();
+    monthSel.innerHTML = "";
+    months.forEach(m => monthSel.appendChild(new Option(m, m)));
+    monthSel.value = months[months.length - 1] || "";
+  };
+  fillMonths();
+  renderIntraday();
+  provSel.onchange = () => { fillMonths(); renderIntraday(); };
+  $("#intraMonth").onchange = renderIntraday;
+
+  renderRank();
+  const distMonth = $("#distMonth");
+  const months = [...new Set(Object.values(D.price_distribution || {}).flatMap(item => Object.keys(item)))].sort();
+  months.forEach(month => distMonth.appendChild(new Option(month, month)));
+  renderDistribution();
+  renderHeat();
+  renderTable();
+
+  ["trendMetric","trendRange"].forEach(id => $("#" + id).onchange = renderTrend);
+  $("#rankMetric").onchange = renderRank;
+  $("#distMonth").onchange = renderDistribution;
+  $("#trendTop").onclick = () => {
+    trendSelected = D.provinces.filter(p => p.real_time_avg !== null)
+      .sort((a, b) => b.real_time_avg - a.real_time_avg).slice(0, 6).map(p => p.province_code);
+    renderTrendChips(); renderTrend();
+  };
+  $("#trendClear").onclick = () => { trendSelected = []; renderTrendChips(); renderTrend(); };
+  document.querySelectorAll("[data-png]").forEach(btn => btn.onclick = () =>
+    exportPng(btn.dataset.png, btn.dataset.png.replace("Svg", "") + "_" + D.meta.end_date + ".png"));
+  document.querySelectorAll("[data-csv]").forEach(btn => btn.onclick = () => exportCsv(btn.dataset.csv));
+  document.querySelectorAll("[data-report]").forEach(btn => btn.onclick = exportSevenDayReport);
+  $("#dlJson").onclick = () => download(
+    new Blob([JSON.stringify(D.provinces, null, 2)], {type:"application/json"}), "区域汇总.json");
+  $("#dlMetaBtn").onclick = () => download(
+    new Blob([JSON.stringify(D.meta, null, 2)], {type:"application/json"}), "meta.json");
+  $("#themeBtn").onclick = () => {
+    const now = document.documentElement.dataset.theme
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.dataset.theme = now === "dark" ? "light" : "dark";
+    renderTrend(); renderIntraday(); renderRank(); renderDistribution(); renderHeat();
+  };
+  setupConsole();
+}
+boot();
+</script>
+</body>
+</html>

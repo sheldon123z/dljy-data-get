@@ -1,0 +1,10 @@
+services:
+  electricity-dashboard:
+    build: .
+    container_name: electricity-dashboard
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    restart: unless-stopped

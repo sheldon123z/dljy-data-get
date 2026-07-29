@@ -1,0 +1,996 @@
+<title>全国现货电价看板</title>
+<style>
+/* ── 设计令牌 ────────────────────────────────────────────────
+   靛蓝=日前价，铜=实时价与峰值，青=负价与谷值。语义色独立于 accent。
+   中性色向靛蓝偏一点，避免纯灰的"未经选择"感。 */
+:root{
+  --paper:#F6F6F2; --panel:#FFFFFF; --sunk:#F1F1EC;
+  --ink:#191D25; --ink-2:#5C6376; --ink-3:#8E94A3;
+  --line:#E2E1DA; --line-2:#D2D1C8;
+  --indigo:#2F4B7C; --copper:#A2701F; --teal:#1B6975; --brick:#96403E;
+  --grid:#EBEAE4;
+  --shadow:0 1px 0 rgba(25,29,37,.04), 0 1px 3px rgba(25,29,37,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0F131A; --panel:#171C25; --sunk:#12171F;
+    --ink:#E7E9ED; --ink-2:#98A0B2; --ink-3:#6C7488;
+    --line:#242B37; --line-2:#2F3846;
+    --indigo:#7FA6DC; --copper:#D6A24F; --teal:#4FA6B4; --brick:#CE7B79;
+    --grid:#1E2530;
+    --shadow:0 1px 0 rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="light"]{
+  --paper:#F6F6F2; --panel:#FFFFFF; --sunk:#F1F1EC;
+  --ink:#191D25; --ink-2:#5C6376; --ink-3:#8E94A3;
+  --line:#E2E1DA; --line-2:#D2D1C8;
+  --indigo:#2F4B7C; --copper:#A2701F; --teal:#1B6975; --brick:#96403E;
+  --grid:#EBEAE4;
+  --shadow:0 1px 0 rgba(25,29,37,.04), 0 1px 3px rgba(25,29,37,.05);
+}
+:root[data-theme="dark"]{
+  --paper:#0F131A; --panel:#171C25; --sunk:#12171F;
+  --ink:#E7E9ED; --ink-2:#98A0B2; --ink-3:#6C7488;
+  --line:#242B37; --line-2:#2F3846;
+  --indigo:#7FA6DC; --copper:#D6A24F; --teal:#4FA6B4; --brick:#CE7B79;
+  --grid:#1E2530;
+  --shadow:0 1px 0 rgba(0,0,0,.3);
+}
+
+/* 中文 webfont 的数据 URI 要几 MB，CSP 又挡掉 CDN——
+   所以正文走系统黑体，数字统一走等宽并对齐，这才是数据页真正需要的。 */
+.dljy{
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",
+         "Microsoft YaHei","Source Han Sans SC",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  padding:0 20px 80px; min-height:100vh;
+}
+/* 内容不足一屏时不要露出骨架底色 */
+html,body{background:var(--paper)}
+.dljy *{box-sizing:border-box}
+.dljy .shell{max-width:1140px;margin:0 auto}
+
+/* ── 顶部状态条：借调度屏的做法，把关键状态压成一行 ── */
+.dljy .masthead{padding:34px 0 18px;border-bottom:2px solid var(--ink);margin-bottom:0}
+.dljy .eyebrow{font-size:11px;letter-spacing:.14em;color:var(--ink-2);
+  font-weight:600;margin-bottom:9px}
+.dljy h1{font-size:31px;line-height:1.15;margin:0;font-weight:680;
+  letter-spacing:-.015em;text-wrap:balance}
+.dljy .statusbar{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line);
+  margin-bottom:26px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.dljy .statusbar div{padding:9px 18px 9px 0;margin-right:18px;border-right:1px solid var(--line)}
+.dljy .statusbar div:last-child{border-right:0}
+.dljy .statusbar b{color:var(--ink);font-weight:600}
+
+/* ── KPI ── */
+.dljy .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:30px}
+.dljy .kpi{background:var(--panel);padding:15px 16px 14px}
+.dljy .kpi .lab{font-size:11px;letter-spacing:.07em;color:var(--ink-2);font-weight:600}
+.dljy .kpi .val{font-family:var(--mono);font-size:25px;font-weight:600;
+  font-variant-numeric:tabular-nums;line-height:1.25;margin-top:3px;letter-spacing:-.02em}
+.dljy .kpi .sub{font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+.dljy .kpi.accent .val{color:var(--copper)}
+.dljy .kpi.cool .val{color:var(--teal)}
+
+/* ── 区块 ── */
+.dljy section{background:var(--panel);border:1px solid var(--line);
+  box-shadow:var(--shadow);margin-bottom:22px}
+.dljy .head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding:15px 18px;border-bottom:1px solid var(--line)}
+.dljy h2{font-size:15.5px;margin:0;font-weight:650;letter-spacing:-.005em}
+.dljy .head .why{font-size:12px;color:var(--ink-3);flex:1;min-width:140px}
+.dljy .body{padding:16px 18px 18px}
+.dljy .controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:14px}
+.dljy .controls .lab{font-size:11px;letter-spacing:.07em;color:var(--ink-2);font-weight:600}
+
+/* ── 控件 ── */
+.dljy button,.dljy select{font-family:inherit;font-size:12.5px;color:var(--ink);
+  background:var(--panel);border:1px solid var(--line-2);padding:5px 11px;
+  border-radius:2px;cursor:pointer;transition:border-color .12s,color .12s}
+.dljy button:hover,.dljy select:hover{border-color:var(--ink-2)}
+.dljy button:focus-visible,.dljy select:focus-visible,.dljy .chip:focus-visible{
+  outline:2px solid var(--indigo);outline-offset:2px}
+.dljy .ghost{background:transparent;border-color:var(--line);color:var(--ink-2);font-size:12px}
+.dljy .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px}
+.dljy .chip{font-size:12.5px;padding:3.5px 11px;border:1px solid var(--line-2);
+  background:transparent;color:var(--ink-2);cursor:pointer;border-radius:2px;
+  font-family:inherit;transition:all .12s}
+.dljy .chip:hover{border-color:var(--ink-2);color:var(--ink)}
+.dljy .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);
+  color:var(--panel);font-weight:500}
+.dljy .chip:disabled{opacity:.32;cursor:not-allowed}
+
+/* ── 图表 ── */
+.dljy .plot{width:100%;overflow-x:auto}
+.dljy svg{display:block;max-width:100%;height:auto}
+.dljy .keys{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);
+  margin-top:11px;font-family:var(--mono)}
+.dljy .keys i{display:inline-block;width:14px;height:3px;margin-right:6px;vertical-align:3px}
+.dljy .duo{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media (max-width:820px){.dljy .duo{grid-template-columns:1fr}}
+.dljy canvas{display:block;max-width:100%;image-rendering:pixelated}
+.dljy .tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--paper);
+  font-family:var(--mono);font-size:11.5px;padding:5px 9px;border-radius:2px;
+  opacity:0;transition:opacity .1s;z-index:60;white-space:nowrap}
+
+/* ── 表格 ── */
+.dljy .scroll{overflow-x:auto;max-height:440px;overflow-y:auto}
+.dljy table{border-collapse:collapse;width:100%;font-size:13px}
+.dljy th,.dljy td{padding:7px 11px;border-bottom:1px solid var(--line);
+  text-align:left;white-space:nowrap}
+.dljy th{position:sticky;top:0;background:var(--panel);color:var(--ink-2);
+  font-weight:600;font-size:11px;letter-spacing:.06em;cursor:pointer;z-index:2;
+  border-bottom:1px solid var(--line-2)}
+.dljy th:hover{color:var(--ink)}
+.dljy td.n,.dljy th.n{text-align:right;font-family:var(--mono);
+  font-variant-numeric:tabular-nums}
+.dljy tbody tr:hover{background:var(--sunk)}
+.dljy .bar{display:inline-block;height:3px;background:var(--copper);vertical-align:2px;
+  margin-right:7px;min-width:1px}
+
+/* ── 周报速览 ── */
+.dljy .report{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;
+  background:var(--line);border-top:1px solid var(--line)}
+.dljy .rcell{background:var(--panel);padding:15px 17px}
+.dljy .rcell .lab{font-size:11px;letter-spacing:.07em;color:var(--ink-2);font-weight:600}
+.dljy .rcell p{margin:6px 0 0;font-size:13.5px;line-height:1.6}
+.dljy .rcell .big{font-family:var(--mono);font-size:22px;font-weight:600;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.dljy .up{color:var(--copper)} .dljy .down{color:var(--teal)}
+.dljy .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.dljy .foot{color:var(--ink-3);font-size:11.5px;line-height:1.8;margin-top:30px;
+  padding-top:16px;border-top:1px solid var(--line)}
+.dljy .foot code{font-family:var(--mono);color:var(--ink-2);background:var(--sunk);
+  padding:1px 5px;border:1px solid var(--line)}
+@media (prefers-reduced-motion:reduce){.dljy *{transition:none!important}}
+</style>
+
+<div class="dljy">
+<div class="shell">
+
+  <div class="masthead">
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1>全国现货电价看板</h1>
+  </div>
+  <div class="statusbar" id="statusbar"></div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <div class="head">
+      <h2>日均价走势</h2>
+      <span class="why">选中单个区域时显示价格带，多选时对比曲线末端标注当前值。</span>
+      <button class="ghost" data-png="trend">存为 PNG</button>
+      <button class="ghost" data-csv="trend">存为 CSV</button>
+    </div>
+    <div class="body">
+      <div class="controls">
+        <span class="lab">指标</span>
+        <select id="metric">
+          <option value="rt">实时均价</option>
+          <option value="da">日前均价</option>
+          <option value="sp">实时 − 日前</option>
+        </select>
+        <span class="lab">区间</span>
+        <select id="range">
+          <option value="30">近 30 天</option>
+          <option value="90">近 90 天</option>
+          <option value="0" selected>全部</option>
+        </select>
+        <span class="lab">平滑</span>
+        <select id="smooth">
+          <option value="1" selected>原始</option>
+          <option value="7">7 日均线</option>
+        </select>
+        <button id="pickTop">取均价前六</button>
+        <button id="pickNone">清空</button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="plot" id="trend"></div>
+    </div>
+  </section>
+
+  <div class="duo">
+    <section>
+      <div class="head">
+        <h2>典型日内曲线</h2>
+        <button class="ghost" data-png="intra">PNG</button>
+        <button class="ghost" data-csv="intra">CSV</button>
+      </div>
+      <div class="body">
+        <div class="controls">
+          <select id="ipro"></select>
+          <select id="imon"></select>
+        </div>
+        <div class="plot" id="intra"></div>
+        <div class="keys">
+          <span><i style="background:var(--copper)"></i>实时</span>
+          <span><i style="background:var(--indigo)"></i>日前</span>
+          <span>▲ 峰　▼ 谷</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="head">
+        <h2>区域排行</h2>
+        <button class="ghost" data-png="rank">PNG</button>
+        <button class="ghost" data-csv="rank">CSV</button>
+      </div>
+      <div class="body">
+        <div class="controls">
+          <select id="rmetric">
+            <option value="real_time_avg">实时均价</option>
+            <option value="day_ahead_avg">日前均价</option>
+            <option value="spread_avg">实时 − 日前</option>
+            <option value="negative_realtime_points">实时负价点数</option>
+          </select>
+        </div>
+        <div class="plot" id="rank"></div>
+      </div>
+    </section>
+  </div>
+
+  <section>
+    <div class="head">
+      <h2>价格矩阵</h2>
+      <span class="why">每格一个区域日的实时均价，色阶按 5–95 分位裁剪，灰格为无数据。</span>
+      <button class="ghost" data-png="matrix">存为 PNG</button>
+    </div>
+    <div class="body">
+      <div class="plot" id="matrix"></div>
+      <div class="keys" id="mkeys"></div>
+    </div>
+  </section>
+
+  <section id="reportBox" hidden>
+    <div class="head">
+      <h2>本周速览</h2>
+      <span class="why" id="reportSpan"></span>
+      <button class="ghost" id="dlMd">导出 Markdown</button>
+      <button class="ghost" id="dlDocx">导出 Word</button>
+    </div>
+    <div class="report" id="report"></div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>区域汇总</h2>
+      <span class="why">点表头排序。价格单位 元/MWh，缺失值不按 0 处理。</span>
+      <button class="ghost" data-csv="prov">存为 CSV</button>
+      <button class="ghost" id="dlJson">存为 JSON</button>
+    </div>
+    <div class="scroll"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</div>
+<div class="tip" id="tip"></div>
+</div>
+
+<script>
+(() => {
+const D = __PAYLOAD__;
+const root = document.querySelector(".dljy");
+const $ = s => root.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+const tip = $("#tip");
+
+const V = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const el = (t, a, txt) => {
+  const n = document.createElementNS(NS, t);
+  for (const k in (a || {})) n.setAttribute(k, a[k]);
+  if (txt !== undefined) n.textContent = txt;
+  return n;
+};
+const num = (v, d = 1) => (v === null || v === undefined || v === "") ? "—" : Number(v).toFixed(d);
+const nameOf = c => (D.meta.provinces.find(p => p.province_code === c) || {}).province || c;
+const LINE_COLORS = () => [V("--indigo"), V("--copper"), V("--teal"), V("--brick"),
+  "#5B7553", "#7A5C8E", "#8A6D3B", "#3E6B8A"];
+
+/* ── 顶栏 ─────────────────────────────────────────────── */
+function head(){
+  const m = D.meta;
+  $("#eyebrow").textContent = `电查查公开接口 · ${m.region_count} 个价格区域 · 元/MWh`;
+  const withData = D.provinces.filter(p => p.point_count > 0).length;
+  const rt = D.provinces.filter(p => p.real_time_avg !== null);
+  const avg = rt.length ? rt.reduce((s, p) => s + p.real_time_avg, 0) / rt.length : null;
+  const neg = D.provinces.reduce((s, p) => s + (p.negative_realtime_points || 0), 0);
+  const gran = {};
+  D.provinces.forEach(p => { if (p.dominant_points_per_day) gran[p.dominant_points_per_day] = (gran[p.dominant_points_per_day] || 0) + 1; });
+
+  $("#statusbar").innerHTML = [
+    ["区间", `${m.start_date} → ${m.end_date}`],
+    ["天数", m.requested_days],
+    ["更新", (m.updated_at || "").replace("T", " ").slice(0, 16)],
+    ["日内粒度", Object.keys(gran).sort((a, b) => b - a).map(k => `${k}点×${gran[k]}`).join(" ")],
+  ].map(([k, v]) => `<div>${k} <b>${v}</b></div>`).join("");
+
+  $("#kpis").innerHTML = [
+    ["有数据区域", `${withData}/${m.region_count}`, "point_count > 0", ""],
+    ["区域日完整度", (m.coverage * 100).toFixed(1) + "%", `${m.available_region_days}/${m.expected_region_days}`, ""],
+    ["分时样本点", (m.detail_rows || 0).toLocaleString("en-US"), "去重后", ""],
+    ["全网实时均价", num(avg), "各区域简单平均", "accent"],
+    ["实时负价点", neg.toLocaleString("en-US"), "价格 < 0", "cool"],
+    ["待补采", ((m.missing_region_days || 0) + (m.failed_region_days || 0)).toLocaleString("en-US"), "missing + failed", ""],
+  ].map(([l, v, s, c]) =>
+    `<div class="kpi ${c}"><div class="lab">${l}</div><div class="val">${v}</div><div class="sub">${s}</div></div>`
+  ).join("");
+
+  $("#foot").innerHTML =
+    `数据来源：电查查小程序公开接口，按「价格区域 × 自然日」逐日请求，保留接口原生的 24/48/96/288 点粒度。`
+    + `蒙西、四川等区域接口只返回实时价，日前价为空是接口口径而非采集缺失。<br>`
+    + `本页由本地采集工具生成于 ${(D.generated_at || "").replace("T", " ").slice(0, 19)}；`
+    + `更新数据请在本机运行 <code>python run.py weekly</code>，令牌只保存在本机 .env。`;
+}
+
+/* ── 折线走势 ─────────────────────────────────────────── */
+let picked = [];
+const seriesOf = (code, metric) => {
+  const s = D.series[code];
+  if (!s) return [];
+  if (metric === "sp") return s.rt.map((v, i) => (v === null || s.da[i] === null) ? null : +(v - s.da[i]).toFixed(1));
+  return metric === "da" ? s.da : s.rt;
+};
+const smoothed = (vals, w) => w <= 1 ? vals : vals.map((_, i) => {
+  const a = vals.slice(Math.max(0, i - w + 1), i + 1).filter(v => v !== null);
+  return a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : null;
+});
+const win = () => { const r = +$("#range").value; return r > 0 ? D.dates.slice(-r) : D.dates; };
+
+function chips(){
+  const box = $("#chips"); box.innerHTML = "";
+  D.meta.provinces.forEach(p => {
+    const has = D.series[p.province_code] && D.series[p.province_code].rt.some(v => v !== null);
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = p.province; b.disabled = !has;
+    b.setAttribute("aria-pressed", picked.includes(p.province_code));
+    b.onclick = () => {
+      const i = picked.indexOf(p.province_code);
+      i >= 0 ? picked.splice(i, 1) : picked.push(p.province_code);
+      chips(); trend();
+    };
+    box.appendChild(b);
+  });
+}
+
+function trend(){
+  const host = $("#trend"); host.innerHTML = "";
+  const dates = win(), off = D.dates.length - dates.length;
+  const metric = $("#metric").value, sm = +$("#smooth").value;
+  if (!picked.length){ host.innerHTML = '<p style="color:var(--ink-3);font-size:13px">请选择至少一个区域。</p>'; return; }
+
+  const colors = LINE_COLORS();
+  const lines = picked.map((c, i) => ({
+    code: c, name: nameOf(c), color: colors[i % colors.length],
+    vals: smoothed(seriesOf(c, metric), sm).slice(off),
+  }));
+  const flat = lines.flatMap(l => l.vals).filter(v => v !== null);
+  if (!flat.length){ host.innerHTML = '<p style="color:var(--ink-3);font-size:13px">所选区域该区间无数据。</p>'; return; }
+
+  const W = 1060, H = 372, L = 56, R = 96, T = 26, B = 40;
+  let lo = Math.min(...flat), hi = Math.max(...flat);
+  if (lo === hi){ lo -= 1; hi += 1; }
+  const pad = (hi - lo) * .1; lo -= pad; hi += pad;
+  const x = i => L + (dates.length < 2 ? 0 : i * (W - L - R) / (dates.length - 1));
+  const y = v => H - B - (v - lo) / (hi - lo) * (H - T - B);
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"svg-trend",
+    "font-family":"ui-monospace,SFMono-Regular,Menlo,monospace"});
+
+  for (let k = 0; k <= 4; k++){
+    const v = lo + (hi - lo) * k / 4, yy = y(v);
+    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:V("--grid"), "stroke-width":1}));
+    svg.appendChild(el("text", {x:L-9, y:yy+3.5, "font-size":10.5, fill:V("--ink-3"), "text-anchor":"end"}, v.toFixed(0)));
+  }
+  if (lo < 0 && hi > 0){
+    svg.appendChild(el("line", {x1:L, y1:y(0), x2:W-R, y2:y(0), stroke:V("--ink-3"),
+      "stroke-width":1, "stroke-dasharray":"3 3"}));
+  }
+  const step = Math.max(1, Math.ceil(dates.length / 10));
+  dates.forEach((d, i) => {
+    if (i % step && i !== dates.length - 1) return;
+    svg.appendChild(el("text", {x:x(i), y:H-B+16, "font-size":10.5, fill:V("--ink-3"), "text-anchor":"middle"}, d.slice(5)));
+  });
+
+  // 单选时补一条价格带，视觉上强调区间；多选时保持纯线条以免糊成一片
+  if (lines.length === 1){
+    const l = lines[0]; let d = "", pen = false, last = 0;
+    l.vals.forEach((v, i) => { if (v === null){ pen = false; return; }
+      d += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true; last = i; });
+    if (d){
+      const area = d + ` L${x(last).toFixed(1)},${y(Math.max(lo, 0)).toFixed(1)} L${x(0).toFixed(1)},${y(Math.max(lo, 0)).toFixed(1)} Z`;
+      svg.appendChild(el("path", {d:area, fill:l.color, opacity:.1}));
+    }
+  }
+  const tags = [];
+  lines.forEach(l => {
+    let d = "", pen = false, lastI = -1, lastV = null;
+    l.vals.forEach((v, i) => { if (v === null){ pen = false; return; }
+      d += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true; lastI = i; lastV = v; });
+    if (!d) return;
+    svg.appendChild(el("path", {d:d.trim(), fill:"none", stroke:l.color,
+      "stroke-width":1.7, "stroke-linejoin":"round", "stroke-linecap":"round"}));
+    if (lastI >= 0){
+      svg.appendChild(el("circle", {cx:x(lastI), cy:y(lastV), r:3, fill:l.color}));
+      tags.push({x:x(lastI), y:y(lastV), color:l.color, text:`${l.name} ${lastV.toFixed(0)}`});
+    }
+  });
+  // 末值标签常常贴在一起，按 y 排序后强制拉开，必要时用一小段引线接回数据点
+  tags.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < tags.length; i++){
+    if (tags[i].y - tags[i-1].y < 13) tags[i].y = tags[i-1].y + 13;
+  }
+  tags.forEach(t => {
+    svg.appendChild(el("text", {x:t.x+8, y:t.y+3.5, "font-size":11, fill:t.color, "font-weight":600}, t.text));
+  });
+  svg.appendChild(el("text", {x:L, y:T-9, "font-size":10.5, fill:V("--ink-2"), "letter-spacing":"0.06em"},
+    ({rt:"实时均价", da:"日前均价", sp:"实时 − 日前价差"})[metric] + "（元/MWh）"));
+  host.appendChild(svg);
+}
+
+/* ── 日内曲线 ─────────────────────────────────────────── */
+function intra(){
+  const host = $("#intra"); host.innerHTML = "";
+  const code = $("#ipro").value, month = $("#imon").value;
+  const e = (D.profiles[code] || {})[month];
+  if (!e){ host.innerHTML = '<p style="color:var(--ink-3);font-size:13px">该区域该月无数据。</p>'; return; }
+  const all = e.real_time.concat(e.day_ahead).filter(v => v !== null && v !== undefined);
+  if (!all.length){ host.innerHTML = '<p style="color:var(--ink-3);font-size:13px">该区域该月无价格。</p>'; return; }
+
+  const W = 520, H = 300, L = 46, R = 14, T = 24, B = 34;
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (lo === hi){ lo -= 1; hi += 1; }
+  const pad = (hi - lo) * .12; lo -= pad; hi += pad;
+  const n = e.slots.length;
+  const x = i => L + (n < 2 ? 0 : i * (W - L - R) / (n - 1));
+  const y = v => H - B - (v - lo) / (hi - lo) * (H - T - B);
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"svg-intra",
+    "font-family":"ui-monospace,SFMono-Regular,Menlo,monospace"});
+
+  for (let k = 0; k <= 4; k++){
+    const v = lo + (hi - lo) * k / 4, yy = y(v);
+    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:V("--grid"), "stroke-width":1}));
+    svg.appendChild(el("text", {x:L-8, y:yy+3.5, "font-size":10, fill:V("--ink-3"), "text-anchor":"end"}, v.toFixed(0)));
+  }
+  const step = Math.max(1, Math.ceil(n / 7));
+  e.slots.forEach((s, i) => {
+    if (i % step && i !== n - 1) return;
+    svg.appendChild(el("text", {x:x(i), y:H-B+15, "font-size":10, fill:V("--ink-3"), "text-anchor":"middle"}, s.slice(0, 5)));
+  });
+
+  const draw = (key, color, fill) => {
+    let d = "", pen = false, first = -1, last = -1;
+    e[key].forEach((v, i) => { if (v === null || v === undefined){ pen = false; return; }
+      d += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true;
+      if (first < 0) first = i; last = i; });
+    if (!d) return;
+    if (fill){
+      const base = y(Math.max(lo, 0));
+      svg.appendChild(el("path", {d:d + ` L${x(last).toFixed(1)},${base.toFixed(1)} L${x(first).toFixed(1)},${base.toFixed(1)} Z`,
+        fill:color, opacity:.11}));
+    }
+    svg.appendChild(el("path", {d:d.trim(), fill:"none", stroke:color, "stroke-width":1.8, "stroke-linejoin":"round"}));
+  };
+  draw("day_ahead", V("--indigo"), false);
+  draw("real_time", V("--copper"), true);
+
+  // 峰谷是这条曲线唯一真正要读出来的东西，直接标在图上
+  const rt = e.real_time;
+  let pi = -1, vi = -1;
+  rt.forEach((v, i) => { if (v === null) return;
+    if (pi < 0 || v > rt[pi]) pi = i;
+    if (vi < 0 || v < rt[vi]) vi = i; });
+  [[pi, "▲", V("--copper"), -9], [vi, "▼", V("--teal"), 16]].forEach(([i, mark, color, dy]) => {
+    if (i < 0) return;
+    svg.appendChild(el("circle", {cx:x(i), cy:y(rt[i]), r:3, fill:color}));
+    svg.appendChild(el("text", {x:x(i), y:y(rt[i])+dy, "font-size":10.5, fill:color,
+      "text-anchor":"middle", "font-weight":600}, `${mark} ${e.slots[i]} ${rt[i].toFixed(0)}`));
+  });
+  svg.appendChild(el("text", {x:L, y:T-8, "font-size":10.5, fill:V("--ink-2")},
+    `${nameOf(code)} ${month}　月均 ${n} 点`));
+  host.appendChild(svg);
+}
+
+/* ── 排行 ─────────────────────────────────────────────── */
+const rankRows = () => {
+  const k = $("#rmetric").value;
+  return D.provinces.filter(p => p[k] !== null && p[k] !== undefined && p.point_count > 0)
+    .sort((a, b) => b[k] - a[k]);
+};
+function rank(){
+  const host = $("#rank"); host.innerHTML = "";
+  const k = $("#rmetric").value, rows = rankRows();
+  if (!rows.length){ host.innerHTML = '<p style="color:var(--ink-3);font-size:13px">暂无数据。</p>'; return; }
+  const W = 520, rh = 17.5, L = 62, R = 52, T = 8;
+  const H = T + rows.length * rh + 8;
+  const vals = rows.map(r => r[k]);
+  const hi = Math.max(...vals, 0), lo = Math.min(...vals, 0), span = (hi - lo) || 1;
+  const zero = L + (0 - lo) / span * (W - L - R);
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"svg-rank",
+    "font-family":"ui-monospace,SFMono-Regular,Menlo,monospace"});
+  rows.forEach((r, i) => {
+    const yy = T + i * rh, v = r[k];
+    const px = L + (v - lo) / span * (W - L - R);
+    svg.appendChild(el("text", {x:L-8, y:yy+11.5, "font-size":11, fill:V("--ink"),
+      "text-anchor":"end", "font-family":"inherit"}, r.province));
+    svg.appendChild(el("rect", {x:Math.min(zero, px), y:yy+3.5, width:Math.max(Math.abs(px-zero), 1),
+      height:rh-8, fill:v < 0 ? V("--teal") : V("--copper"), opacity:.85}));
+    svg.appendChild(el("text", {x:Math.max(px, zero)+6, y:yy+11.5, "font-size":10.5, fill:V("--ink-2")},
+      k === "negative_realtime_points" ? String(v) : v.toFixed(1)));
+  });
+  host.appendChild(svg);
+}
+
+/* ── 价格矩阵（canvas，5249 格用 SVG 太重）─────────────── */
+let matrixMeta = null;
+function matrix(){
+  const host = $("#matrix"); host.innerHTML = "";
+  const dates = D.dates, provs = D.meta.provinces;
+  const cell = Math.max(3, Math.min(6, Math.floor(900 / dates.length)));
+  const rh = 15, L = 74, T = 20;
+  const W = L + dates.length * cell + 10, H = T + provs.length * rh + 8;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cv = document.createElement("canvas");
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + "px"; cv.style.height = H + "px";
+  cv.id = "cv-matrix";
+  const g = cv.getContext("2d");
+  g.scale(dpr, dpr);
+  g.fillStyle = V("--panel"); g.fillRect(0, 0, W, H);
+
+  const flat = [];
+  provs.forEach(p => (D.series[p.province_code] || {rt:[]}).rt.forEach(v => { if (v !== null) flat.push(v); }));
+  flat.sort((a, b) => a - b);
+  const q = t => flat[Math.min(flat.length - 1, Math.max(0, Math.round(t * (flat.length - 1))))];
+  const lo = q(.05), hi = q(.95), span = (hi - lo) || 1;
+  // 青(低) → 中性 → 铜(高)，两端裁剪到分位，避免极值把中段压平
+  const ramp = t => {
+    t = Math.max(0, Math.min(1, t));
+    const cool = [31, 105, 117], mid = [222, 220, 210], warm = [162, 112, 31];
+    const [a, b, u] = t < .5 ? [cool, mid, t * 2] : [mid, warm, (t - .5) * 2];
+    return `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * u)).join(",")})`;
+  };
+
+  g.font = "11px -apple-system,'PingFang SC',sans-serif";
+  g.textAlign = "right"; g.fillStyle = V("--ink");
+  provs.forEach((p, r) => g.fillText(p.province, L - 8, T + r * rh + 11));
+  g.textAlign = "left"; g.fillStyle = V("--ink-3");
+  g.font = "10px ui-monospace,Menlo,monospace";
+  let lastM = "";
+  dates.forEach((d, i) => { const m = d.slice(0, 7);
+    if (m !== lastM){ lastM = m; g.fillText(m.slice(2), L + i * cell, T - 7); } });
+
+  provs.forEach((p, r) => {
+    const s = D.series[p.province_code] || {rt:[]};
+    for (let i = 0; i < dates.length; i++){
+      const v = s.rt[i];
+      g.fillStyle = (v === null || v === undefined) ? V("--line-2") : ramp((v - lo) / span);
+      g.fillRect(L + i * cell, T + r * rh + 2, Math.max(cell - .5, 2), rh - 4);
+    }
+  });
+  host.appendChild(cv);
+  matrixMeta = {cell, rh, L, T, dates, provs};
+
+  cv.onmousemove = ev => {
+    const b = cv.getBoundingClientRect();
+    const ci = Math.floor((ev.clientX - b.left - L) / cell);
+    const ri = Math.floor((ev.clientY - b.top - T) / rh);
+    if (ci < 0 || ci >= dates.length || ri < 0 || ri >= provs.length){ tip.style.opacity = 0; return; }
+    const s = D.series[provs[ri].province_code] || {rt:[], da:[]};
+    const rt = s.rt[ci], da = s.da[ci];
+    tip.textContent = `${provs[ri].province} ${dates[ci]}　实时 ${num(rt)}　日前 ${num(da)}`;
+    tip.style.left = Math.min(ev.clientX + 12, innerWidth - 260) + "px";
+    tip.style.top = (ev.clientY - 30) + "px";
+    tip.style.opacity = 1;
+  };
+  cv.onmouseleave = () => tip.style.opacity = 0;
+
+  $("#mkeys").innerHTML =
+    `<span><i style="background:${ramp(0)};height:11px;width:16px"></i>${lo.toFixed(0)} 及以下</span>`
+    + `<span><i style="background:${ramp(.5)};height:11px;width:16px"></i>中位 ${((lo+hi)/2).toFixed(0)}</span>`
+    + `<span><i style="background:${ramp(1)};height:11px;width:16px"></i>${hi.toFixed(0)} 及以上</span>`
+    + `<span><i style="background:${V("--line-2")};height:11px;width:16px"></i>无数据</span>`
+    + `<span>共 ${provs.length} × ${dates.length} 格</span>`;
+}
+
+/* ── 周报速览 ─────────────────────────────────────────── */
+function report(){
+  const r = D.report;
+  if (!r) return;
+  $("#reportBox").hidden = false;
+  $("#reportSpan").textContent = `${r.week_label}　${r.start} → ${r.end}`;
+  const delta = (now, prev) => {
+    if (now === null || prev === null || now === undefined || prev === undefined) return "";
+    const d = now - prev, pct = prev ? d / Math.abs(prev) : 0;
+    return `<span class="${d >= 0 ? "up" : "down"} mono">${d >= 0 ? "+" : ""}${d.toFixed(1)}（${(pct*100).toFixed(1)}%）</span>`;
+  };
+  const ex = r.extremes || {};
+  const top = (r.ranked || []).slice(0, 3)
+    .map((x, i) => `${i+1}. ${x.province} <span class="mono">${num(x.real_time_avg)}</span>`).join("<br>");
+  const cells = [
+    ["全网实时均价", `<div class="big">${num(r.now_rt)}</div>${delta(r.now_rt, r.prev_rt)} 环比`],
+    ["全网日前均价", `<div class="big">${num(r.now_da)}</div>${delta(r.now_da, r.prev_da)} 环比`],
+    ["最高价", ex.highest ? `<div class="big up">${num(ex.highest.price)}</div><p>${ex.highest.province} ${ex.highest.trade_date} ${ex.highest.time_slot}</p>` : "—"],
+    ["最低价", ex.lowest ? `<div class="big down">${num(ex.lowest.price)}</div><p>${ex.lowest.province} ${ex.lowest.trade_date} ${ex.lowest.time_slot}</p>` : "—"],
+    ["日内峰谷", (r.peak && r.valley)
+      ? `<p><span class="up">▲ ${r.peak.time_slot}</span> <span class="mono">${num(r.peak.real_time)}</span><br>`
+        + `<span class="down">▼ ${r.valley.time_slot}</span> <span class="mono">${num(r.valley.real_time)}</span><br>`
+        + `峰谷差 <span class="mono">${num(r.peak.real_time - r.valley.real_time)}</span></p>` : "—"],
+    ["实时均价前三", `<p>${top || "—"}</p>`],
+    ["负价 / 零价点", `<p><span class="mono">${ex.negative_points ?? 0}</span> 个负价<br><span class="mono">${ex.zero_points ?? 0}</span> 个零价<br>共 <span class="mono">${(ex.total_points ?? 0).toLocaleString("en-US")}</span> 个样本</p>`],
+    ["本周完整度", `<div class="big">${((r.coverage || 0) * 100).toFixed(0)}%</div><p>${r.available_days}/${r.expected_days} 区域日</p>`],
+  ];
+  $("#report").innerHTML = cells
+    .map(([l, v]) => `<div class="rcell"><div class="lab">${l}</div>${v}</div>`).join("");
+
+  $("#dlMd").onclick = () => {
+    const doc = reportDoc();
+    if (doc) save(new Blob([toMarkdown(doc)], {type:"text/markdown;charset=utf-8"}), doc.name + ".md");
+  };
+  $("#dlDocx").onclick = () => {
+    const doc = reportDoc();
+    if (doc) save(toDocx(doc), doc.name + ".docx");
+  };
+}
+
+/* ── 周报导出 ──────────────────────────────────────────
+   报告先组装成一份中间结构（标题/段落/表格），再分别渲染成
+   Markdown 和 docx，两种格式内容完全一致。 */
+function reportDoc(){
+  const r = D.report;
+  if (!r) return null;
+  const ex = r.extremes || {};
+  const rows = r.all_regions || r.ranked || [];
+  const delta = (now, prev) => {
+    if (now === null || now === undefined || prev === null || prev === undefined) return "—";
+    const d = now - prev;
+    return `${d >= 0 ? "+" : ""}${d.toFixed(1)}（${prev ? ((d / Math.abs(prev)) * 100).toFixed(1) : "0.0"}%）`;
+  };
+  const blocks = [];
+  blocks.push({t:"h1", text:`全国现货电价周报 · ${r.week_label}`});
+  blocks.push({t:"meta", text:
+    `统计区间 ${r.start} ~ ${r.end}　|　覆盖 ${r.region_count} 个价格区域　|　`
+    + `区域日完整度 ${((r.coverage||0)*100).toFixed(1)}%（${r.available_days}/${r.expected_days}）　|　单位 元/MWh`});
+
+  blocks.push({t:"h2", text:"一、本周概览"});
+  blocks.push({t:"table", head:["指标", "本周", "上周", "环比"], widths:[2400, 1800, 1800, 2400], rows:[
+    ["全网实时均价", num(r.now_rt), num(r.prev_rt), delta(r.now_rt, r.prev_rt)],
+    ["全网日前均价", num(r.now_da), num(r.prev_da), delta(r.now_da, r.prev_da)],
+    ["有数据区域数", String(r.region_count), String(r.prev_region_count ?? "—"), "—"],
+    ["分时样本点", (ex.total_points ?? 0).toLocaleString("en-US"), "—", "—"],
+  ]});
+
+  blocks.push({t:"h2", text:"二、各区域实时均价"});
+  blocks.push({t:"table",
+    head:["#", "区域", "实时均价", "日前均价", "价差", "周内最低", "周内最高", "环比"],
+    widths:[600, 1300, 1300, 1300, 1100, 1300, 1300, 1900],
+    rows: rows.map((x, i) => [
+      String(i + 1), x.province, num(x.real_time_avg), num(x.day_ahead_avg), num(x.spread),
+      num(x.real_time_min), num(x.real_time_max),
+      delta(x.real_time_avg, x.prev_real_time_avg ?? null),
+    ])});
+
+  blocks.push({t:"h2", text:"三、价格特征"});
+  const feats = [];
+  if (ex.highest) feats.push(`实时最高价 ${num(ex.highest.price)}，出现在 ${ex.highest.province} ${ex.highest.trade_date} ${ex.highest.time_slot}。`);
+  if (ex.lowest) feats.push(`实时最低价 ${num(ex.lowest.price)}，出现在 ${ex.lowest.province} ${ex.lowest.trade_date} ${ex.lowest.time_slot}。`);
+  feats.push(`实时负价点 ${ex.negative_points ?? 0} 个，零价点 ${ex.zero_points ?? 0} 个，共 ${(ex.total_points ?? 0).toLocaleString("en-US")} 个样本。`);
+  if (r.peak && r.valley){
+    feats.push(`全网日内高峰在 ${r.peak.time_slot}（${num(r.peak.real_time)}），低谷在 ${r.valley.time_slot}（${num(r.valley.real_time)}），`
+      + `峰谷差 ${num(r.peak.real_time - r.valley.real_time)}。`);
+  }
+  feats.forEach(text => blocks.push({t:"li", text}));
+
+  blocks.push({t:"h2", text:"四、数据质量"});
+  blocks.push({t:"li", text:`本周目标区域日 ${r.expected_days}，已采集 ${r.available_days}。`});
+  const missing = r.missing_provinces || [];
+  if (missing.length){
+    missing.forEach(([name, count]) => blocks.push({t:"li", text:`${name}：缺 ${count} 天`}));
+  } else {
+    blocks.push({t:"li", text:"本周全部区域日均已采集。"});
+  }
+
+  blocks.push({t:"h2", text:"五、口径说明"});
+  [
+    "每个价格区域按自然日请求（startDate=endDate），避免区间接口返回区间平均值。",
+    "保留接口原生日内粒度：江西 288 点、多数区域 96 点、浙江 48 点、部分区域 24 点。跨区域比较分时数据时需注意。",
+    "蒙西、四川等区域接口只返回实时价，日前价为空属接口口径，不是采集缺失。",
+    "缺失值一律留空，不按 0 处理。",
+  ].forEach(text => blocks.push({t:"li", text}));
+
+  blocks.push({t:"meta", text:
+    `数据来源：电查查小程序公开接口。报告生成于 ${(r.generated_at || D.generated_at || "").replace("T", " ").slice(0, 19)}。`});
+
+  const slug = `${r.week_label.replace(/[年第周]/g, "-").replace(/-+$/,"").replace(/^-|-$/g,"")}`;
+  return {blocks, name:`全国现货电价周报_${r.start}_${r.end}`, slug};
+}
+
+function toMarkdown(doc){
+  const out = [];
+  doc.blocks.forEach(b => {
+    if (b.t === "h1") out.push(`# ${b.text}`, "");
+    else if (b.t === "h2") out.push("", `## ${b.text}`, "");
+    else if (b.t === "meta") out.push(`_${b.text.replace(/\s*\|\s*/g, " · ")}_`, "");
+    else if (b.t === "li") out.push(`- ${b.text}`);
+    else if (b.t === "table"){
+      out.push(`| ${b.head.join(" | ")} |`);
+      out.push(`| ${b.head.map((_, i) => i === 0 ? "---" : "---:").join(" | ")} |`);
+      b.rows.forEach(r => out.push(`| ${r.join(" | ")} |`));
+      out.push("");
+    }
+  });
+  return out.join("\n") + "\n";
+}
+
+/* docx 就是个 zip。CSP 挡掉了所有外部库，所以这里手写一个
+   store 模式（不压缩）的最小 zip writer —— 对纯文本 XML 完全够用。 */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++){
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes){
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function zipStore(files){
+  const enc = new TextEncoder();
+  const chunks = [], central = [];
+  let offset = 0;
+  const u16 = v => [v & 0xFF, (v >>> 8) & 0xFF];
+  const u32 = v => [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+
+  files.forEach(({name, text}) => {
+    const nameBytes = enc.encode(name), data = enc.encode(text);
+    const crc = crc32(data);
+    // 本地文件头：签名 + 版本 + 标志(UTF-8) + 方法0(store) + 时间/日期 + crc + 大小 ×2 + 名长 + 扩展长
+    const local = [...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0),
+      ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length),
+      ...u16(nameBytes.length), ...u16(0)];
+    chunks.push(new Uint8Array(local), nameBytes, data);
+    central.push([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0),
+      ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length),
+      ...u16(nameBytes.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0),
+      ...u32(offset), ...Array.from(nameBytes)]);
+    offset += local.length + nameBytes.length + data.length;
+  });
+
+  const dir = central.flat();
+  const end = [...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length),
+    ...u16(files.length), ...u32(dir.length), ...u32(offset), ...u16(0)];
+  return new Blob([...chunks, new Uint8Array(dir), new Uint8Array(end)],
+    {type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
+const xmlEsc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function toDocx(doc){
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const run = (text, opts = {}) =>
+    `<w:r><w:rPr>${opts.b ? "<w:b/>" : ""}${opts.color ? `<w:color w:val="${opts.color}"/>` : ""}`
+    + `${opts.sz ? `<w:sz w:val="${opts.sz}"/><w:szCs w:val="${opts.sz}"/>` : ""}</w:rPr>`
+    + `<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`;
+  const para = (text, style, opts) =>
+    `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ""}</w:pPr>${run(text, opts)}</w:p>`;
+
+  const cell = (text, width, opts = {}) =>
+    `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>`
+    + (opts.head ? '<w:shd w:val="clear" w:fill="1F3B63"/>' : "")
+    + `<w:vAlign w:val="center"/></w:tcPr>`
+    + `<w:p><w:pPr><w:spacing w:before="20" w:after="20"/>`
+    + `<w:jc w:val="${opts.right ? "right" : "left"}"/></w:pPr>`
+    + run(text, {b: opts.head, color: opts.head ? "FFFFFF" : undefined, sz: 19})
+    + "</w:p></w:tc>";
+
+  const body = doc.blocks.map(b => {
+    if (b.t === "h1") return para(b.text, "Heading1");
+    if (b.t === "h2") return para(b.text, "Heading2");
+    if (b.t === "meta") return para(b.text, "Subtle", {sz: 18});
+    if (b.t === "li") return para("• " + b.text);
+    if (b.t === "table"){
+      const grid = b.widths.map(w => `<w:gridCol w:w="${w}"/>`).join("");
+      const head = `<w:tr><w:trPr><w:tblHeader/></w:trPr>`
+        + b.head.map((h, i) => cell(h, b.widths[i], {head:true, right:i > 1})).join("") + "</w:tr>";
+      const rows = b.rows.map(r => "<w:tr>"
+        + r.map((v, i) => cell(v, b.widths[i], {right:i > 1})).join("") + "</w:tr>").join("");
+      return `<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/>`
+        + `<w:tblW w:w="0" w:type="auto"/><w:tblBorders>`
+        + ["top","left","bottom","right","insideH","insideV"].map(s =>
+            `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="C9CEDA"/>`).join("")
+        + `</w:tblBorders></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${head}${rows}</w:tbl>`
+        + `<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>`;
+    }
+    return "";
+  }).join("");
+
+  // 中文必须显式指定 eastAsia 字体，否则 Word 会拿默认西文字体去凑
+  const fonts = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Microsoft YaHei" w:cs="Calibri"/>';
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles ${W}>
+<w:docDefaults><w:rPrDefault><w:rPr>${fonts}<w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr></w:rPrDefault>
+<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="288" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>
+<w:pPr><w:spacing w:before="240" w:after="160"/></w:pPr>
+<w:rPr>${fonts}<w:b/><w:sz w:val="36"/><w:color w:val="1F3B63"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/>
+<w:pPr><w:spacing w:before="280" w:after="140"/></w:pPr>
+<w:rPr>${fonts}<w:b/><w:sz w:val="26"/><w:color w:val="1F3B63"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Subtle"><w:name w:val="Subtle"/>
+<w:rPr>${fonts}<w:color w:val="6A7183"/><w:sz w:val="18"/></w:rPr></w:style>
+</w:styles>`;
+
+  return zipStore([
+    {name:"[Content_Types].xml", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>`},
+    {name:"_rels/.rels", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`},
+    {name:"word/_rels/document.xml.rels", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`},
+    {name:"word/styles.xml", text:styles},
+    {name:"word/document.xml", text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document ${W}><w:body>${body}
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>
+<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="709" w:footer="709"/></w:sectPr>
+</w:body></w:document>`},
+  ]);
+}
+
+/* ── 表格 ─────────────────────────────────────────────── */
+const COLS = [["province","区域",0],["coverage","覆盖率",1],["dominant_points_per_day","日内点数",1],
+  ["point_count","样本点",1],["day_ahead_avg","日前均价",1],["real_time_avg","实时均价",1],
+  ["spread_avg","价差",1],["real_time_min","实时最低",1],["real_time_max","实时最高",1],
+  ["negative_realtime_points","负价点",1],["zero_realtime_points","零价点",1]];
+let sk = "real_time_avg", sd = true;
+function table(){
+  const maxRt = Math.max(...D.provinces.map(p => p.real_time_avg || 0), 1);
+  $("#tbl thead").innerHTML = "<tr>" + COLS.map(([k, l, n]) =>
+    `<th class="${n?"n":""}" data-k="${k}">${l}${sk===k?(sd?" ↓":" ↑"):""}</th>`).join("") + "</tr>";
+  root.querySelectorAll("#tbl th").forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    k === sk ? sd = !sd : (sk = k, sd = true);
+    table();
+  });
+  const rows = D.provinces.slice().sort((a, b) => {
+    const x = a[sk], y = b[sk];
+    if (x === null || x === undefined) return 1;
+    if (y === null || y === undefined) return -1;
+    const c = typeof x === "number" ? x - y : String(x).localeCompare(String(y), "zh");
+    return sd ? -c : c;
+  });
+  $("#tbl tbody").innerHTML = rows.map(r => "<tr>" + COLS.map(([k, , n]) => {
+    let v = r[k];
+    if (k === "province"){
+      const w = Math.round((r.real_time_avg || 0) / maxRt * 34);
+      return `<td><span class="bar" style="width:${w}px"></span>${v}</td>`;
+    }
+    if (k === "coverage" && typeof v === "number") v = (v * 100).toFixed(1) + "%";
+    else if (n && typeof v === "number") v = Number.isInteger(v) ? v.toLocaleString("en-US") : v.toFixed(1);
+    else if (v === null || v === undefined || v === "") v = "—";
+    return `<td class="${n?"n":""}">${v}</td>`;
+  }).join("") + "</tr>").join("");
+}
+
+/* ── 导出 ─────────────────────────────────────────────── */
+function save(blob, name){
+  const u = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = u; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+}
+function png(kind){
+  const stamp = `${kind}_${D.meta.end_date}.png`;
+  if (kind === "matrix"){
+    const cv = root.querySelector("#cv-matrix");
+    if (cv) cv.toBlob(b => save(b, stamp), "image/png");
+    return;
+  }
+  const svg = root.querySelector("#svg-" + kind);
+  if (!svg) return;
+  const c = svg.cloneNode(true);
+  c.setAttribute("xmlns", NS);
+  const w = +svg.getAttribute("width"), h = +svg.getAttribute("height");
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", V("--panel"));
+  c.insertBefore(bg, c.firstChild);
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(c)],
+    {type:"image/svg+xml;charset=utf-8"}));
+  const img = new Image();
+  img.onload = () => {
+    const cv = document.createElement("canvas");
+    cv.width = w * 2; cv.height = h * 2;
+    const g = cv.getContext("2d"); g.scale(2, 2); g.drawImage(img, 0, 0);
+    cv.toBlob(b => { save(b, stamp); URL.revokeObjectURL(url); }, "image/png");
+  };
+  img.onerror = () => URL.revokeObjectURL(url);
+  img.src = url;
+}
+const csvText = (h, rows) => "﻿" + [h.join(","), ...rows.map(r => r.map(v => {
+  const s = (v === null || v === undefined) ? "" : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}).join(","))].join("\n");
+function csv(kind){
+  let h, rows, name;
+  if (kind === "prov"){
+    h = COLS.map(c => c[1]); rows = D.provinces.map(p => COLS.map(c => p[c[0]]));
+    name = "区域汇总.csv";
+  } else if (kind === "trend"){
+    const dates = win(), off = D.dates.length - dates.length, m = $("#metric").value;
+    const codes = picked.length ? picked : D.meta.provinces.map(p => p.province_code);
+    const cols = codes.map(c => seriesOf(c, m).slice(off));
+    h = ["交易日期", ...codes.map(nameOf)];
+    rows = dates.map((d, i) => [d, ...cols.map(c => c[i])]);
+    name = `日均价_${$("#metric").selectedOptions[0].textContent}.csv`;
+  } else if (kind === "intra"){
+    const c = $("#ipro").value, m = $("#imon").value;
+    const e = (D.profiles[c] || {})[m] || {slots:[], day_ahead:[], real_time:[]};
+    h = ["时点", "日前价格", "实时价格"];
+    rows = e.slots.map((s, i) => [s, e.day_ahead[i], e.real_time[i]]);
+    name = `日内曲线_${nameOf(c)}_${m}.csv`;
+  } else {
+    const k = $("#rmetric").value, lab = $("#rmetric").selectedOptions[0].textContent;
+    h = ["区域", "区域代码", lab];
+    rows = rankRows().map(r => [r.province, r.province_code, r[k]]);
+    name = `区域排行_${lab}.csv`;
+  }
+  save(new Blob([csvText(h, rows)], {type:"text/csv;charset=utf-8"}), name);
+}
+
+/* ── 启动 ─────────────────────────────────────────────── */
+head();
+const live = D.meta.provinces.filter(p =>
+  D.series[p.province_code] && D.series[p.province_code].rt.some(v => v !== null));
+picked = live.slice()
+  .sort((a, b) => ((D.provinces.find(x => x.province_code === b.province_code) || {}).real_time_avg || 0)
+                - ((D.provinces.find(x => x.province_code === a.province_code) || {}).real_time_avg || 0))
+  .slice(0, 5).map(p => p.province_code);
+chips(); trend();
+
+const ipro = $("#ipro");
+live.forEach(p => ipro.appendChild(new Option(p.province, p.province_code)));
+const months = () => {
+  const sel = $("#imon"), ms = Object.keys(D.profiles[ipro.value] || {}).sort();
+  sel.innerHTML = ""; ms.forEach(m => sel.appendChild(new Option(m, m)));
+  sel.value = ms[ms.length - 1] || "";
+};
+months(); intra(); rank(); matrix(); report(); table();
+
+ipro.onchange = () => { months(); intra(); };
+$("#imon").onchange = intra;
+["metric", "range", "smooth"].forEach(id => $("#" + id).onchange = trend);
+$("#rmetric").onchange = rank;
+$("#pickTop").onclick = () => {
+  picked = D.provinces.filter(p => p.real_time_avg !== null)
+    .sort((a, b) => b.real_time_avg - a.real_time_avg).slice(0, 6).map(p => p.province_code);
+  chips(); trend();
+};
+$("#pickNone").onclick = () => { picked = []; chips(); trend(); };
+root.querySelectorAll("[data-png]").forEach(b => b.onclick = () => png(b.dataset.png));
+root.querySelectorAll("[data-csv]").forEach(b => b.onclick = () => csv(b.dataset.csv));
+$("#dlJson").onclick = () => save(
+  new Blob([JSON.stringify(D.provinces, null, 2)], {type:"application/json"}), "区域汇总.json");
+
+// 图表颜色取自 CSS 变量，主题一变就得重绘——viewer 的切换按钮和系统偏好都要接住
+const repaint = () => { trend(); intra(); rank(); matrix(); };
+new MutationObserver(repaint).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme", "class"]});
+if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", repaint);
+})();
+</script>

@@ -1,0 +1,9 @@
+# 仅构建 Windows 便携应用时需要；产物中已包含这些依赖，最终用户无需安装。
+-r requirements.lock.txt
+pyinstaller==6.15.0
+altgraph==0.17.5
+pefile==2023.2.7
+pyinstaller-hooks-contrib==2026.6
+pywin32-ctypes==0.2.3
+packaging==26.2
+setuptools==83.0.0

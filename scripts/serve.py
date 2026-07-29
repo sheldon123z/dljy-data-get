@@ -43,6 +43,12 @@ STATIC_TASKS: dict[str, list[list[str]]] = {
         script_command("dashboard.py"),
         script_command("dashboard.py", "--artifact"),
     ],
+    "repair-prices": [
+        script_command("collect.py", "--refresh-missing-prices", "--workers", "3"),
+        script_command("export_json.py"),
+        script_command("dashboard.py"),
+        script_command("dashboard.py", "--artifact"),
+    ],
     "json": [script_command("export_json.py")],
     "excel": [script_command("export_excel.py")],
     "tree": [script_command("export_tree.py")],
@@ -55,6 +61,7 @@ STATIC_TASKS: dict[str, list[list[str]]] = {
 
 TASK_LABELS = {
     "backfill": "补采所有缺口",
+    "repair-prices": "补拉缺失价格字段",
     "json": "导出 JSON",
     "excel": "导出 Excel",
     "tree": "导出分层 Excel",

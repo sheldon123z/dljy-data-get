@@ -1,7 +1,7 @@
 # 全国现货电价采集工具
 
 从电查查小程序接口按「价格区域 × 自然日」采集日前、实时电价，保留接口原生的
-24/48/96 等日内粒度，并输出 CSV 数据仓、JSON、Excel、周报和一个可交互的 HTML 看板。
+24/48/96/288 等日内粒度，并输出 CSV 数据仓、JSON、Excel、周报和一个可交互的 HTML 看板。
 
 支持断点续采、每日定时增量、本地控制台一键操作。
 
@@ -60,8 +60,10 @@ python run.py serve        # 打开本地控制台，之后都可以点按钮操
 
 `run.py serve` 会在终端打印一个带一次性密钥的地址并自动打开浏览器。页面顶部就是
 令牌输入框和「补采所有缺口 / 采集最近 3 天 / 导出 JSON / 导出 Excel / 生成周报」等按钮，
-下方是走势图、日内曲线、区域排行、覆盖热力图和可排序的区域汇总表，图表都能导出 PNG，
-数据都能导出 CSV。
+下方首图是**多天同一时点均价曲线**：可选最近 7 / 14 / 30 个交易日或按月，
+横轴统一为 96 个 15 分钟时点，可多选或一键全选省份对比实时或日前价格。图表可导出 PNG，
+Excel 导出首个 Sheet 为全国分时均价总览，后续每个 Sheet 对应一个区域的分时均价和有效样本数；另有区域排行、价格区间分布、
+覆盖热力图和可排序的区域汇总表。
 
 ## 命令一览
 
@@ -73,6 +75,7 @@ python run.py serve        # 打开本地控制台，之后都可以点按钮操
 | `python run.py sniff` | 用本地代理自动抓取 Authorization，免开抓包 GUI |
 | `python run.py import-excel` | 从 `data/archive/` 的历史 Excel 反向建立数据仓 |
 | `python run.py collect [参数]` | 采集 / 续采，参数透传给 `scripts/collect.py` |
+| `python run.py collect --refresh-missing-prices` | 仅重采日前价或实时价字段为空的区域日 |
 | `python run.py backfill` | 补齐区间内所有缺口，然后导出 JSON |
 | `python run.py daily` | 每日增量：采最近 3 天 + 导出 + 重建看板 |
 | `python run.py export` | 导出 JSON + Excel + 地区/月/周分层 Excel |

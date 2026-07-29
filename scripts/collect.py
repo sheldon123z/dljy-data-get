@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config  # noqa: E402
 from common import (  # noqa: E402
     BASE_URL,
+    DETAIL_FILE,
     DETAIL_FIELDS,
     DETAIL_URL,
     PRICE_UNIT,
@@ -30,6 +31,7 @@ from common import (  # noqa: E402
     append_csv,
     build_outputs,
     date_strings,
+    iter_csv,
     load_provinces,
     now_stamp,
     pending_tasks,
@@ -65,6 +67,11 @@ def parse_args(argv=None):
         type=int,
         default=0,
         help="强制重采最近 N 天，用于接口事后补录价格的情况",
+    )
+    parser.add_argument(
+        "--refresh-missing-prices",
+        action="store_true",
+        help="只重采日前或实时价格字段为空的区域日，不影响价格完整的区域日",
     )
     parser.add_argument("--raw-dir", type=Path, default=config.RAW_DIR)
     parser.add_argument("--province-file", type=Path)
@@ -224,6 +231,24 @@ def resolve_dates(args, raw_dir: Path) -> tuple[str, str, list[str]]:
     return repo_start, repo_end, window
 
 
+def missing_price_tasks(raw_dir: Path, provinces: list[dict], window: list[str]) -> list[tuple[dict, str]]:
+    """找出明细中任一价格字段为空的区域日，作为定向重采任务。
+
+    不以 quality.csv 的 available 状态为准，因为接口可能返回完整时点但其中
+    的日前价或实时价为空；这种情况需要保留区域日状态并单独补拉价格字段。
+    """
+    selected = {province["province_code"]: province for province in provinces}
+    window_set = set(window)
+    incomplete: set[tuple[str, str]] = set()
+    for row in iter_csv(raw_dir / DETAIL_FILE):
+        code, trade_date = row["province_code"], row["trade_date"]
+        if code not in selected or trade_date not in window_set:
+            continue
+        if not (row.get("day_ahead_price") or "").strip() or not (row.get("real_time_price") or "").strip():
+            incomplete.add((code, trade_date))
+    return [(selected[code], trade_date) for code, trade_date in sorted(incomplete, key=lambda item: (item[1], item[0]))]
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     if not 1 <= args.workers <= 16:
@@ -242,6 +267,11 @@ def main(argv=None) -> int:
         print(f"强制重采 {cutoff} 起的数据，已清除 {removed} 条质量记录", flush=True)
 
     tasks = pending_tasks(raw_dir, provinces, window, include_failed=not args.skip_failed)
+    if args.refresh_missing_prices:
+        repair_tasks = missing_price_tasks(raw_dir, provinces, window)
+        existing = {(province["province_code"], trade_date) for province, trade_date in tasks}
+        tasks.extend(task for task in repair_tasks if (task[0]["province_code"], task[1]) not in existing)
+        print(f"检测到 {len(repair_tasks)} 个价格字段缺失的区域日，已加入定向重采队列", flush=True)
     total = len(provinces) * len(window)
     print(
         f"窗口 {window[0]} ~ {window[-1]}｜区域 {len(provinces)}｜目标区域日 {total}｜"

@@ -55,6 +55,13 @@ table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left}
 th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:600;cursor:pointer;z-index:1}
 th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+.matrix-wrap{overflow:auto;max-height:720px;border:1px solid var(--line);border-radius:8px}
+.matrix{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:11.5px;font-variant-numeric:tabular-nums}
+.matrix th,.matrix td{min-width:67px;padding:7px 8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:right}
+.matrix th{cursor:default;text-align:center;background:var(--bg)}
+.matrix th:first-child,.matrix td:first-child{position:sticky;left:0;z-index:2;min-width:76px;text-align:center;background:var(--panel);font-size:13px}
+.matrix thead th:first-child{z-index:3;background:var(--bg)}
+.matrix td.matrix-empty{background:var(--bg);color:var(--muted)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .note{color:var(--muted);font-size:12px;margin-top:8px}
@@ -117,7 +124,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
       <div class="row">
         <button class="primary" data-task="collect">采集并更新看板</button>
         <button data-task="weekly">完整刷新与导出</button>
-        <button data-task="backfill">补采所有缺口</button>
+        <button data-task="backfill">补采所有缺口</button><button data-task="repair-prices">补拉缺失价格</button>
         <button id="reloadDashboard">刷新页面数据</button>
       </div>
       <div class="row">
@@ -162,52 +169,55 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
 <section class="kpis" id="kpis"></section>
 
 <section class="panel">
-  <h2>日均价走势
+  <h2>多天同一时点均价走势
     <span class="tools">
-      <button data-png="trendSvg">导出 PNG</button>
-      <button data-csv="trend">导出 CSV</button>
-      <button data-report="seven-day">导出近 7 日总结</button>
+      <button data-png="intraSvg">导出 PNG</button>
+      <button data-xlsx="intraday">导出 Excel</button>
     </span>
   </h2>
   <div class="row">
-    <label>指标</label>
-    <select id="trendMetric">
-      <option value="real_time">实时均价</option>
-      <option value="day_ahead">日前均价</option>
-      <option value="spread">实时-日前价差</option>
+    <label>统计口径</label>
+    <select id="intraRange">
+      <option value="7" selected>最近 7 天</option>
+      <option value="14">最近 14 天</option>
+      <option value="30">最近 30 天</option>
+      <option value="month">按月</option>
     </select>
-    <label>区间</label>
-    <select id="trendRange">
-      <option value="7" selected>近 7 天</option>
-      <option value="30">近 30 天</option>
-      <option value="90">近 90 天</option>
-      <option value="0">全部</option>
-    </select>
-    <button id="trendTop">选取均价前 6</button>
-    <button id="trendClear">清空选择</button>
+    <label>价格口径</label>
+    <select id="intraMetric"><option value="real_time">实时价格</option><option value="day_ahead">日前价格</option></select>
+    <span id="intraMonthWrap" class="hide"><label>月份</label><select id="intraMonth"></select></span>
+    <button id="intraTop">选取均价前 6</button><button id="intraAll">全选全部区域</button><button id="intraClear">清空选择</button>
   </div>
-  <div class="chips" id="trendChips"></div>
-  <div class="chart" id="trendChart"></div>
+  <div class="chips" id="intraChips"></div>
+  <div class="chart" id="intraChart"></div>
+  <p class="note" id="intraNote">所有区域统一映射到 96 个 15 分钟时点后计算均值；缺失值不按 0 补齐。可多选区域进行横向对比；Excel 导出首个 Sheet 为全国，之后每个省区各有独立 Sheet。</p>
 </section>
 
 <section class="panel">
-  <h2>典型日内曲线
-    <span class="tools"><button data-png="intraSvg">导出 PNG</button><button data-csv="intraday">导出 CSV</button></span>
+  <h2>分省分时均价表
+    <span class="tools"><button data-xlsx="matrix">导出 Excel（日前+实时）</button></span>
   </h2>
   <div class="row">
-    <label>区域</label><select id="intraProvince"></select>
-    <label>月份</label><select id="intraMonth"></select>
+    <label>统计口径</label>
+    <select id="matrixRange">
+      <option value="7" selected>最近 7 天</option>
+      <option value="14">最近 14 天</option>
+      <option value="30">最近 30 天</option>
+      <option value="month">按月</option>
+    </select>
+    <label>价格口径</label>
+    <select id="matrixMetric"><option value="real_time">实时价格</option><option value="day_ahead">日前价格</option></select>
+    <label>时点粒度</label>
+    <select id="matrixPoints"><option value="96" selected>96 点（15 分钟）</option><option value="24">24 点（小时）</option></select>
+    <span id="matrixMonthWrap" class="hide"><label>月份</label><select id="matrixMonth"></select></span>
   </div>
-  <div class="chart" id="intraChart"></div>
-  <div class="legend">
-    <span><i style="background:var(--accent)"></i>实时价格</span>
-    <span><i style="background:var(--accent2)"></i>日前价格</span>
-  </div>
+  <div class="matrix-wrap"><table class="matrix" id="matrixTable"><thead></thead><tbody></tbody></table></div>
+  <p class="note" id="matrixNote">纵轴为地区，横轴可切换 96 个 15 分钟时点或 24 个小时点；颜色由蓝（低）至橙（高），空白表示该时点无有效数据。</p>
 </section>
 
 <section class="panel">
   <h2>区域均价排行
-    <span class="tools"><button data-png="rankSvg">导出 PNG</button><button data-csv="rank">导出 CSV</button></span>
+    <span class="tools"><button data-png="rankSvg">导出 PNG</button><button data-xlsx="rank">导出 Excel</button></span>
   </h2>
   <div class="row">
     <label>排序依据</label>
@@ -255,7 +265,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
 
 <section class="panel">
   <h2>区域汇总
-    <span class="tools"><button data-csv="provinces">导出 CSV</button><button id="dlJson">导出 JSON</button></span>
+    <span class="tools"><button data-xlsx="provinces">导出 Excel</button><button id="dlJson">导出 JSON</button></span>
   </h2>
   <div class="scroll"><table id="provTable"><thead></thead><tbody></tbody></table></div>
   <p class="note">点击表头可排序。价格单位：元/MWh。缺失值不按 0 处理。</p>
@@ -419,48 +429,201 @@ function renderTrend(){
     at:i => ({title:dates[i], lines:lines.map(l => `${l.name}：${fmt(l.values[i])} 元/MWh`)})});
 }
 
-/* ------------------------------------------------------------------ 日内曲线 */
+/* ------------------------------------------------------------------ 同一时点均价曲线 */
+let intraSelected = [];
+function intraScope(){
+  const range = $("#intraRange").value;
+  if (range === "month") {
+    const month = $("#intraMonth").value;
+    return {range, label:`${month} 月`, dates:[], profiles:Object.fromEntries(
+      Object.entries(D.profiles).map(([code, months]) => [code, months[month]])
+    )};
+  }
+  const item = (D.rolling_profiles || {})[range] || {dates:[], profiles:{}};
+  return {range, label:`最近 ${range} 天`, dates:item.dates || [], profiles:item.profiles || {}};
+}
+function intraEntry(code){ return intraScope().profiles[code]; }
+function fillIntraMonths(){
+  const monthSel = $("#intraMonth");
+  const months = [...new Set(Object.values(D.profiles || {}).flatMap(item => Object.keys(item || {})))].sort();
+  const before = monthSel.value;
+  monthSel.innerHTML = "";
+  months.forEach(month => monthSel.appendChild(new Option(month, month)));
+  monthSel.value = months.includes(before) ? before : (months.at(-1) || "");
+}
+function renderIntraChips(){
+  const box = $("#intraChips"), scope = intraScope();
+  box.innerHTML = "";
+  D.meta.provinces.forEach(p => {
+    const entry = scope.profiles[p.province_code];
+    const has = entry && entry.real_time.some(value => value !== null && value !== undefined);
+    const chip = document.createElement("button");
+    chip.className = "chip" + (has ? "" : " off");
+    chip.type = "button"; chip.textContent = p.province; chip.disabled = !has;
+    chip.setAttribute("aria-pressed", intraSelected.includes(p.province_code));
+    chip.onclick = () => {
+      const index = intraSelected.indexOf(p.province_code);
+      if (index >= 0) intraSelected.splice(index, 1); else intraSelected.push(p.province_code);
+      renderIntraChips(); renderIntraday();
+    };
+    box.appendChild(chip);
+  });
+}
+function selectIntraTop(){
+  const scope = intraScope();
+  intraSelected = D.meta.provinces.filter(p => {
+    const entry = scope.profiles[p.province_code];
+    return entry && entry.real_time.some(value => value !== null && value !== undefined);
+  }).sort((a, b) => {
+    const pa = D.provinces.find(row => row.province_code === a.province_code) || {};
+    const pb = D.provinces.find(row => row.province_code === b.province_code) || {};
+    return (pb.real_time_avg || 0) - (pa.real_time_avg || 0);
+  }).slice(0, 6).map(p => p.province_code);
+}
+function selectIntraAll(){
+  const scope = intraScope();
+  intraSelected = D.meta.provinces
+    .filter(p => {
+      const entry = scope.profiles[p.province_code];
+      return entry && entry.real_time.some(value => value !== null && value !== undefined);
+    })
+    .map(p => p.province_code);
+}
 function renderIntraday(){
-  const host = $("#intraChart");
+  const host = $("#intraChart"), scope = intraScope(), metric = $("#intraMetric").value;
   host.innerHTML = "";
-  const code = $("#intraProvince").value, month = $("#intraMonth").value;
-  const entry = (D.profiles[code] || {})[month];
-  if (!entry){ host.innerHTML = '<p class="note">该区域该月份没有数据。</p>'; return; }
-  const flat = entry.real_time.concat(entry.day_ahead).filter(v => v !== null && v !== undefined);
-  if (!flat.length){ host.innerHTML = '<p class="note">该区域该月份没有价格。</p>'; return; }
-  const W = 1080, H = 340, L = 62, R = 18, T = 20, B = 48;
+  const entries = intraSelected.map(code => ({code, entry:scope.profiles[code]})).filter(item => item.entry);
+  if (!entries.length){ host.innerHTML = '<p class="note">请选择至少一个有数据的区域。</p>'; return; }
+  const slots = [...new Set(entries.flatMap(item => item.entry.slots))].sort();
+  const sampleKey = metric + "_samples";
+  const lines = entries.map((item, index) => {
+    const values = Object.fromEntries(item.entry.slots.map((slot, i) => [slot, item.entry[metric][i]]));
+    const samples = Object.fromEntries(item.entry.slots.map((slot, i) => [slot, (item.entry[sampleKey] || [])[i] || 0]));
+    return {code:item.code, name:nameOf(item.code), color:PALETTE[index % PALETTE.length], values:slots.map(slot => values[slot] ?? null), samples:slots.map(slot => samples[slot] || 0)};
+  });
+  const flat = lines.flatMap(item => item.values).filter(value => value !== null && value !== undefined);
+  if (!flat.length){ host.innerHTML = '<p class="note">所选区域在该统计口径下没有价格。</p>'; return; }
+  const W = 1080, H = 360, L = 62, R = 18, T = 20, B = 52;
   let lo = Math.min(...flat), hi = Math.max(...flat);
   if (lo === hi){ lo -= 1; hi += 1; }
   const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
-  const n = entry.slots.length;
-  const x = i => L + (n === 1 ? 0 : i * (W - L - R) / (n - 1));
-  const y = v => H - B - (v - lo) / (hi - lo) * (H - T - B);
-  const muted = cssVar("--muted"), line = cssVar("--line");
+  const x = i => L + (slots.length === 1 ? 0 : i * (W - L - R) / (slots.length - 1));
+  const y = value => H - B - (value - lo) / (hi - lo) * (H - T - B);
+  const fg = cssVar("--fg"), muted = cssVar("--muted"), grid = cssVar("--line");
   const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"intraSvg", "font-family":"sans-serif"});
   for (let k = 0; k <= 4; k++){
     const value = lo + (hi - lo) * k / 4, yy = y(value);
-    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:line, "stroke-width":1}));
+    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:grid, "stroke-width":1}));
     svg.appendChild(el("text", {x:L-8, y:yy+4, "font-size":11, fill:muted, "text-anchor":"end"}, value.toFixed(0)));
   }
-  const step = Math.max(1, Math.ceil(n / 12));
-  entry.slots.forEach((slot, i) => {
-    if (i % step && i !== n - 1) return;
+  const step = Math.max(1, Math.ceil(slots.length / 12));
+  slots.forEach((slot, i) => {
+    if (i % step && i !== slots.length - 1) return;
     svg.appendChild(el("text", {x:x(i), y:H-B+18, "font-size":11, fill:muted, "text-anchor":"middle"}, slot));
   });
-  [["day_ahead", cssVar("--accent2")], ["real_time", cssVar("--accent")]].forEach(([key, color]) => {
+  lines.forEach(item => {
     let path = "", pen = false;
-    entry[key].forEach((v, i) => {
-      if (v === null || v === undefined){ pen = false; return; }
-      path += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1);
-      pen = true;
+    item.values.forEach((value, i) => {
+      if (value === null || value === undefined){ pen = false; return; }
+      path += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(value).toFixed(1); pen = true;
     });
-    if (path) svg.appendChild(el("path", {d:path.trim(), fill:"none", stroke:color, "stroke-width":2.4, "stroke-linejoin":"round"}));
+    if (path) svg.appendChild(el("path", {d:path.trim(), fill:"none", stroke:item.color, "stroke-width":2.5,
+      "stroke-linejoin":"round", "stroke-linecap":"round"}));
   });
-  svg.appendChild(el("text", {x:L, y:T-4, "font-size":11, fill:muted},
-    `${nameOf(code)} ${month} 月均日内曲线（${n} 点，元/MWh）`));
+  let legendX = L;
+  lines.forEach(item => {
+    svg.appendChild(el("rect", {x:legendX, y:H-16, width:11, height:11, rx:2, fill:item.color}));
+    svg.appendChild(el("text", {x:legendX+16, y:H-6, "font-size":12, fill:fg}, item.name));
+    legendX += 30 + item.name.length * 13;
+  });
+  const metricName = metric === "real_time" ? "实时价格" : "日前价格";
+  svg.appendChild(el("text", {x:L, y:T-4, "font-size":11, fill:muted}, `${scope.label}同一时点平均${metricName}（元/MWh）`));
   host.appendChild(svg);
-  addLineTooltip(host, svg, {width:W, left:L, right:R, top:T, bottom:H-B, count:n, x,
-    at:i => ({title:entry.slots[i], lines:[`实时价格：${fmt(entry.real_time[i])} 元/MWh`, `日前价格：${fmt(entry.day_ahead[i])} 元/MWh`]})});
+  const dateNote = scope.dates.length ? `${scope.dates[0]} 至 ${scope.dates.at(-1)}｜` : "";
+  const sourceGrains = [...new Set(entries.map(item => item.entry.source_points).filter(Boolean))].sort((a,b) => a-b);
+  const grainNote = sourceGrains.length ? `原始粒度含 ${sourceGrains.join("/")} 点，已统一映射为 96 个 15 分钟时点｜` : "";
+  $("#intraNote").textContent = `${dateNote}${grainNote}按每个区域相同 time_slot 的有效价格计算均值；缺失值不按 0 补齐。Excel 导出首个 Sheet 为全国，之后每个省区各有独立 Sheet。`;
+  addLineTooltip(host, svg, {width:W, left:L, right:R, top:T, bottom:H-B, count:slots.length, x,
+    at:i => ({title:slots[i], lines:lines.map(item => `${item.name}：${fmt(item.values[i])} 元/MWh（${item.samples[i]} 个有效样本）`)})});
+}
+
+/* ------------------------------------------------------------------ 分省分时均价矩阵 */
+function matrixScope(){
+  const range = $("#matrixRange").value;
+  if (range === "month") {
+    const month = $("#matrixMonth").value;
+    return {range, label:`${month} 月`, dates:[], profiles:Object.fromEntries(
+      Object.entries(D.profiles).map(([code, months]) => [code, months[month]])
+    )};
+  }
+  const item = (D.rolling_profiles || {})[range] || {dates:[], profiles:{}};
+  return {range, label:`最近 ${range} 天`, dates:item.dates || [], profiles:item.profiles || {}};
+}
+function fillMatrixMonths(){
+  const monthSel = $("#matrixMonth");
+  const months = [...new Set(Object.values(D.profiles || {}).flatMap(item => Object.keys(item || {})))].sort();
+  const before = monthSel.value;
+  monthSel.innerHTML = "";
+  months.forEach(month => monthSel.appendChild(new Option(month, month)));
+  monthSel.value = months.includes(before) ? before : (months.at(-1) || "");
+}
+function matrixColor(value, lo, hi){
+  if (value === null || value === undefined || !Number.isFinite(value)) return "";
+  const ratio = hi === lo ? .5 : Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+  const low = [65, 114, 196], high = [247, 133, 35];
+  const rgb = low.map((channel, index) => Math.round(channel + (high[index] - channel) * ratio));
+  return `rgb(${rgb.join(",")})`;
+}
+function matrixEntry(entry, points){
+  if (points === 96) return entry;
+  const groupSize = 4, output = {slots:[], day_ahead:[], real_time:[], day_ahead_samples:[], real_time_samples:[]};
+  for (let start = 0; start < entry.slots.length; start += groupSize) {
+    output.slots.push(entry.slots[Math.min(start + groupSize - 1, entry.slots.length - 1)]);
+    ["day_ahead", "real_time"].forEach(key => {
+      const sampleKey = key + "_samples";
+      const valid = entry[key].slice(start, start + groupSize).map((value, index) => ({value, samples:(entry[sampleKey] || [])[start + index] || 0}))
+        .filter(item => item.value !== null && item.value !== undefined && Number.isFinite(item.value));
+      const weight = valid.reduce((sum, item) => sum + Math.max(1, item.samples), 0);
+      output[key].push(weight ? Number((valid.reduce((sum, item) => sum + item.value * Math.max(1, item.samples), 0) / weight).toFixed(2)) : null);
+      output[sampleKey].push(valid.length ? Math.round(valid.reduce((sum, item) => sum + item.samples, 0) / valid.length) : 0);
+    });
+  }
+  return output;
+}
+function matrixRows(scope = matrixScope()){
+  const metric = $("#matrixMetric").value;
+  const points = +$("#matrixPoints").value;
+  const rows = D.meta.provinces.map(province => {
+    const source = scope.profiles[province.province_code];
+    return {province, entry:source ? matrixEntry(source, points) : null};
+  }).filter(row => row.entry);
+  return {metric, points, rows, slots:rows[0]?.entry.slots || []};
+}
+function renderMatrix(){
+  const scope = matrixScope(), {metric, points, rows, slots} = matrixRows(scope);
+  const table = $("#matrixTable"), thead = table.querySelector("thead"), tbody = table.querySelector("tbody");
+  thead.innerHTML = ""; tbody.innerHTML = "";
+  if (!rows.length || !slots.length){ tbody.innerHTML = '<tr><td>当前统计口径没有可展示的数据。</td></tr>'; return; }
+  const values = rows.flatMap(row => row.entry[metric]).filter(value => value !== null && value !== undefined && Number.isFinite(value));
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const head = document.createElement("tr");
+  ["地区", ...slots].forEach(label => { const th = document.createElement("th"); th.textContent = label; head.appendChild(th); });
+  thead.appendChild(head);
+  rows.forEach(row => {
+    const tr = document.createElement("tr"), name = document.createElement("td");
+    name.textContent = row.province.province; tr.appendChild(name);
+    row.entry[metric].forEach((value, index) => {
+      const td = document.createElement("td");
+      if (value === null || value === undefined || !Number.isFinite(value)) { td.textContent = "—"; td.className = "matrix-empty"; }
+      else { td.textContent = Number(value).toFixed(2); td.style.background = matrixColor(value, lo, hi); }
+      const samples = (row.entry[metric + "_samples"] || [])[index] || 0;
+      td.title = `${row.province.province} ${slots[index]}｜${metric === "real_time" ? "实时" : "日前"}均价：${fmt(value)} 元/MWh｜有效样本：${samples}`;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  const dateNote = scope.dates.length ? `${scope.dates[0]} 至 ${scope.dates.at(-1)}｜` : "";
+  $("#matrixNote").textContent = `${dateNote}${scope.label}同一时点平均${metric === "real_time" ? "实时价格" : "日前价格"}。纵轴为地区，横轴为 ${points} 个${points === 24 ? "小时" : "15 分钟"}时点；蓝色偏低、橙色偏高，悬停可查看有效样本数。`;
 }
 
 /* ------------------------------------------------------------------ 排行 */
@@ -677,6 +840,150 @@ function toCsv(headers, rows){
   };
   return "﻿" + [headers.join(","), ...rows.map(r => r.map(escape).join(","))].join("\n");
 }
+function xlsxEscape(value){
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
+}
+function xlsxColumn(index){
+  let text = "", value = index + 1;
+  while (value) { const rest = (value - 1) % 26; text = String.fromCharCode(65 + rest) + text; value = Math.floor((value - 1) / 26); }
+  return text;
+}
+const XLSX_ENCODER = new TextEncoder();
+const XLSX_CRC = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) { let crc = i; for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0); table[i] = crc >>> 0; }
+  return table;
+})();
+function xlsxCrc32(bytes){
+  let crc = 0xFFFFFFFF;
+  for (const byte of bytes) crc = XLSX_CRC[(crc ^ byte) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function xlsxU16(value){ return new Uint8Array([value & 255, (value >>> 8) & 255]); }
+function xlsxU32(value){ return new Uint8Array([value & 255, (value >>> 8) & 255, (value >>> 16) & 255, (value >>> 24) & 255]); }
+function xlsxZip(files){
+  const local = [], central = []; let offset = 0;
+  files.forEach(file => {
+    const name = XLSX_ENCODER.encode(file.name), bytes = typeof file.data === "string" ? XLSX_ENCODER.encode(file.data) : file.data;
+    const crc = xlsxCrc32(bytes), localSize = 30 + name.length + bytes.length;
+    local.push(new Uint8Array([80,75,3,4]), xlsxU16(20), xlsxU16(0), xlsxU16(0), xlsxU16(0), xlsxU16(0), xlsxU32(crc), xlsxU32(bytes.length), xlsxU32(bytes.length), xlsxU16(name.length), xlsxU16(0), name, bytes);
+    central.push(new Uint8Array([80,75,1,2]), xlsxU16(20), xlsxU16(20), xlsxU16(0), xlsxU16(0), xlsxU16(0), xlsxU16(0), xlsxU32(crc), xlsxU32(bytes.length), xlsxU32(bytes.length), xlsxU16(name.length), xlsxU16(0), xlsxU16(0), xlsxU16(0), xlsxU16(0), xlsxU32(0), xlsxU32(offset), name);
+    offset += localSize;
+  });
+  const centralSize = central.reduce((sum, part) => sum + part.length, 0);
+  return new Blob([...local, ...central, new Uint8Array([80,75,5,6]), xlsxU16(0), xlsxU16(0), xlsxU16(files.length), xlsxU16(files.length), xlsxU32(centralSize), xlsxU32(offset), xlsxU16(0)], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+const XLSX_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Microsoft YaHei"/></font><font><b/><sz val="10"/><name val="Microsoft YaHei"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`;
+function xlsxTableSheet(headers, rows, chart = null){
+  const lastCol = xlsxColumn(headers.length - 1), lastRow = rows.length + 1;
+  const stringCell = (ref, value, style = 0) => `<c r="${ref}"${style ? ` s="${style}"` : ""} t="inlineStr"><is><t>${xlsxEscape(value)}</t></is></c>`;
+  const valueCell = (ref, value) => typeof value === "number" && Number.isFinite(value)
+    ? `<c r="${ref}" s="2"><v>${value}</v></c>` : value === null || value === undefined || value === "" ? "" : stringCell(ref, value);
+  const header = headers.map((value, index) => stringCell(`${xlsxColumn(index)}1`, value, 1)).join("");
+  const body = rows.map((row, rowIndex) => `<row r="${rowIndex + 2}">${row.map((value, colIndex) => valueCell(`${xlsxColumn(colIndex)}${rowIndex + 2}`, value)).join("")}</row>`).join("");
+  const drawing = chart ? '<drawing r:id="rId1"/>' : "";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="A1:${lastCol}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="16" customWidth="1"/><col min="2" max="${headers.length}" width="14" customWidth="1"/></cols><sheetData><row r="1">${header}</row>${body}</sheetData><autoFilter ref="A1:${lastCol}${lastRow}"/>${drawing}</worksheet>`;
+}
+function xlsxChartXml(sheetName, chart){
+  const quoted = `'${sheetName.replace(/'/g, "''")}'`, last = chart.lastRow;
+  const series = (titleCell, valueCol, color, order) => `<c:ser><c:idx val="${order}"/><c:order val="${order}"/><c:tx><c:strRef><c:f>${quoted}!$${titleCell}$1</c:f></c:strRef></c:tx><c:spPr><a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="28575"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:ln></c:spPr><c:marker><c:symbol val="none"/></c:marker><c:cat><c:strRef><c:f>${quoted}!$A$2:$A$${last}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>${quoted}!$${valueCol}$2:$${valueCol}$${last}</c:f></c:numRef></c:val><c:smooth val="0"/></c:ser>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="zh-CN"/><a:t>${xlsxEscape(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:layout/></c:title><c:plotArea><c:layout/><c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${series("B", "B", "2563EB", 0)}${series("D", "D", "F97316", 1)}<c:axId val="48650112"/><c:axId val="48672768"/></c:lineChart><c:catAx><c:axId val="48650112"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:tickLblPos val="nextTo"/><c:crossAx val="48672768"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/></c:catAx><c:valAx><c:axId val="48672768"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorGridlines/><c:tickLblPos val="nextTo"/><c:crossAx val="48650112"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx></c:plotArea><c:legend><c:legendPos val="r"/><c:layout/></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>`;
+}
+function xlsxDrawingXml(index){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>7</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>18</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>20</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${index}" name="分时均价折线图"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>`;
+}
+function xlsxWorkbook(sheets){
+  const chartSheets = sheets.map((sheet, index) => ({sheet, index})).filter(item => item.sheet.chart);
+  const sheetOverrides = sheets.map((sheet, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
+  const chartOverrides = chartSheets.map(({index}) => `<Override PartName="/xl/drawings/drawing${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/><Override PartName="/xl/charts/chart${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`).join("");
+  const workbookSheets = sheets.map((sheet, index) => `<sheet name="${xlsxEscape(sheet.name).slice(0,31)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("");
+  const relationships = sheets.map((sheet, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("");
+  return xlsxZip([
+    {name:"[Content_Types].xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheetOverrides}${chartOverrides}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`},
+    {name:"_rels/.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:"xl/workbook.xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbookSheets}</sheets></workbook>`},
+    {name:"xl/_rels/workbook.xml.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:"xl/styles.xml", data:XLSX_STYLES},
+    ...sheets.map((sheet, index) => ({name:`xl/worksheets/sheet${index + 1}.xml`, data:sheet.xml})),
+    ...chartSheets.flatMap(({sheet, index}) => [
+      {name:`xl/worksheets/_rels/sheet${index + 1}.xml.rels`, data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${index + 1}.xml"/></Relationships>`},
+      {name:`xl/drawings/drawing${index + 1}.xml`, data:xlsxDrawingXml(index + 1)},
+      {name:`xl/drawings/_rels/drawing${index + 1}.xml.rels`, data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${index + 1}.xml"/></Relationships>`},
+      {name:`xl/charts/chart${index + 1}.xml`, data:xlsxChartXml(sheet.name, sheet.chart)},
+    ]),
+  ]);
+}
+function matrixXlsxSheet(metric, matrix){
+  const slots = matrix.slots, lastCol = xlsxColumn(slots.length), lastRow = matrix.rows.length + 1;
+  const stringCell = (ref, value, style = 0) => `<c r="${ref}"${style ? ` s="${style}"` : ""} t="inlineStr"><is><t>${xlsxEscape(value)}</t></is></c>`;
+  const numberCell = (ref, value) => value === null || value === undefined || !Number.isFinite(value) ? "" : `<c r="${ref}" s="2"><v>${Number(value)}</v></c>`;
+  const header = [stringCell("A1", "地区", 1), ...slots.map((slot, index) => stringCell(`${xlsxColumn(index + 1)}1`, slot, 1))].join("");
+  const rows = matrix.rows.map((row, rowIndex) => {
+    const index = rowIndex + 2;
+    return `<row r="${index}">${stringCell(`A${index}`, row.province.province, 1)}${row.entry[metric].map((value, colIndex) => numberCell(`${xlsxColumn(colIndex + 1)}${index}`, value)).join("")}</row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastCol}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="${slots.length + 1}" width="11" customWidth="1"/></cols><sheetData><row r="1">${header}</row>${rows}</sheetData><autoFilter ref="A1:${lastCol}${lastRow}"/></worksheet>`;
+}
+function exportMatrixExcel(){
+  const scope = matrixScope(), matrix = matrixRows(scope);
+  if (!matrix.rows.length || !matrix.slots.length) { alert("当前统计口径没有可导出的数据。"); return; }
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Microsoft YaHei"/></font><font><b/><sz val="10"/><name val="Microsoft YaHei"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`;
+  const files = [
+    {name:"[Content_Types].xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`},
+    {name:"_rels/.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:"xl/workbook.xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="日前价格_${matrix.points}点" sheetId="1" r:id="rId1"/><sheet name="实时价格_${matrix.points}点" sheetId="2" r:id="rId2"/></sheets></workbook>`},
+    {name:"xl/_rels/workbook.xml.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:"xl/styles.xml", data:styles},
+    {name:"xl/worksheets/sheet1.xml", data:matrixXlsxSheet("day_ahead", matrix)},
+    {name:"xl/worksheets/sheet2.xml", data:matrixXlsxSheet("real_time", matrix)},
+  ];
+  const end = scope.dates.at(-1) || $("#matrixMonth").value || D.meta.end_date;
+  download(xlsxZip(files), `分省分时均价表_${matrix.points}点_日前与实时_${scope.range === "month" ? "按月" : scope.range + "天"}_${end}.xlsx`);
+}
+function intradayExportProfiles(scope){
+  return D.meta.provinces.map(province => ({province, entry:scope.profiles[province.province_code]})).filter(item => item.entry);
+}
+function exportIntradayExcel(){
+  const scope = intraScope(), profiles = intradayExportProfiles(scope);
+  if (!profiles.length){ alert("当前统计口径没有可导出的数据。"); return; }
+  const slots = profiles[0].entry.slots;
+  const nationalRows = slots.map((slot, index) => {
+    const aggregate = key => {
+      const sampleKey = key + "_samples";
+      const valid = profiles.map(item => ({value:item.entry[key][index], samples:(item.entry[sampleKey] || [])[index] || 0}))
+        .filter(item => item.value !== null && item.value !== undefined && Number.isFinite(item.value));
+      const weight = valid.reduce((sum, item) => sum + Math.max(1, item.samples), 0);
+      return {value:weight ? valid.reduce((sum, item) => sum + item.value * Math.max(1, item.samples), 0) / weight : null,
+        samples:valid.reduce((sum, item) => sum + item.samples, 0), regions:valid.length};
+    };
+    const rt = aggregate("real_time"), da = aggregate("day_ahead");
+    return [slot, rt.value, rt.samples, da.value, da.samples, Math.max(rt.regions, da.regions)];
+  });
+  const headers = ["时点", "实时均价", "实时有效样本", "日前均价", "日前有效样本", "覆盖区域数"];
+  const sheets = [{name:"全国", chart:{title:"全国同一时点均价走势", lastRow:nationalRows.length + 1}, xml:xlsxTableSheet(headers, nationalRows, true)}];
+  profiles.forEach(({province, entry}) => {
+    const rows = entry.slots.map((slot, index) => [slot, entry.real_time[index], (entry.real_time_samples || [])[index] || 0,
+      entry.day_ahead[index], (entry.day_ahead_samples || [])[index] || 0]);
+    sheets.push({name:province.province, chart:{title:`${province.province}同一时点均价走势`, lastRow:rows.length + 1}, xml:xlsxTableSheet(headers.slice(0,5), rows, true)});
+  });
+  const end = scope.dates.at(-1) || $("#intraMonth").value || D.meta.end_date;
+  download(xlsxWorkbook(sheets), `同一时点均价_${scope.range === "month" ? "按月" : scope.range + "天"}_${end}.xlsx`);
+}
+function exportSimpleExcel(kind){
+  let headers, rows, name;
+  if (kind === "rank") {
+    const key = $("#rankMetric").value, label = $("#rankMetric").selectedOptions[0].textContent;
+    headers = ["地区", "区域代码", label]; rows = rankRows().map(row => [row.province, row.province_code, row[key]]); name = `区域排行_${label}.xlsx`;
+  } else {
+    headers = TABLE_COLS.map(column => column[1]); rows = D.provinces.map(province => TABLE_COLS.map(column => province[column[0]])); name = "区域汇总.xlsx";
+  }
+  download(xlsxWorkbook([{name:kind === "rank" ? "区域排行" : "区域汇总", xml:xlsxTableSheet(headers, rows)}]), name);
+}
+function exportExcel(kind){
+  if (kind === "matrix") return exportMatrixExcel();
+  if (kind === "intraday") return exportIntradayExcel();
+  return exportSimpleExcel(kind);
+}
 function exportCsv(kind){
   let headers, rows, name;
   if (kind === "provinces"){
@@ -692,11 +999,43 @@ function exportCsv(kind){
     rows = dates.map((d, i) => [d, ...cols.map(col => col[i])]);
     name = `日均价_${metric}.csv`;
   } else if (kind === "intraday"){
-    const code = $("#intraProvince").value, month = $("#intraMonth").value;
-    const entry = (D.profiles[code] || {})[month] || {slots:[], day_ahead:[], real_time:[]};
-    headers = ["时点", "日前价格", "实时价格"];
-    rows = entry.slots.map((s, i) => [s, entry.day_ahead[i], entry.real_time[i]]);
-    name = `日内曲线_${nameOf(code)}_${month}.csv`;
+    const scope = intraScope();
+    headers = ["数据视图", "统计口径", "统计起始日期", "统计结束日期", "区域", "区域代码", "时点", "实时均价", "实时有效样本", "日前均价", "日前有效样本", "覆盖区域数"];
+    rows = [];
+    const profiles = D.meta.provinces.map(province => ({province, entry:scope.profiles[province.province_code]})).filter(item => item.entry);
+    const slots = profiles[0] ? profiles[0].entry.slots : [];
+    // 全国总览按各省该时点的有效样本加权，避免因某省数据缺失而被按 0 计入。
+    slots.forEach((slot, index) => {
+      const national = key => {
+        const sampleKey = key + "_samples";
+        const valid = profiles.map(item => ({value:item.entry[key][index], samples:(item.entry[sampleKey] || [])[index] || 0}))
+          .filter(item => item.value !== null && item.value !== undefined && Number.isFinite(item.value));
+        const weight = valid.reduce((sum, item) => sum + Math.max(1, item.samples), 0);
+        return {value:weight ? valid.reduce((sum, item) => sum + item.value * Math.max(1, item.samples), 0) / weight : null,
+          samples:valid.reduce((sum, item) => sum + item.samples, 0), regions:valid.length};
+      };
+      const rt = national("real_time"), da = national("day_ahead");
+      rows.push(["全国总览", scope.label, scope.dates[0] || "", scope.dates.at(-1) || "", "全国", "ALL", slot,
+        rt.value === null ? null : rt.value.toFixed(2), rt.samples,
+        da.value === null ? null : da.value.toFixed(2), da.samples, Math.max(rt.regions, da.regions)]);
+    });
+    D.meta.provinces.forEach(province => {
+      const entry = scope.profiles[province.province_code];
+      if (!entry) return;
+      entry.slots.forEach((slot, index) => rows.push([
+        "分省分时均价", scope.label, scope.dates[0] || "", scope.dates.at(-1) || "", province.province, province.province_code, slot,
+        entry.real_time[index], (entry.real_time_samples || [])[index] || 0,
+        entry.day_ahead[index], (entry.day_ahead_samples || [])[index] || 0, 1,
+      ]));
+    });
+    const end = scope.dates.at(-1) || $("#intraMonth").value || D.meta.end_date;
+    name = `同一时点均价_${scope.range === "month" ? "按月" : scope.range + "天"}_${end}.csv`;
+  } else if (kind === "matrix"){
+    const scope = matrixScope(), matrix = matrixRows(scope);
+    headers = ["地区", ...matrix.slots];
+    rows = matrix.rows.map(row => [row.province.province, ...row.entry[matrix.metric]]);
+    const end = scope.dates.at(-1) || $("#matrixMonth").value || D.meta.end_date;
+    name = `分省分时均价表_${matrix.metric}_${scope.range === "month" ? "按月" : scope.range + "天"}_${end}.csv`;
   } else {
     const key = $("#rankMetric").value;
     const label = $("#rankMetric").selectedOptions[0].textContent;
@@ -879,33 +1218,32 @@ function startPolling(){
 /* ------------------------------------------------------------------ 启动 */
 function boot(){
   renderHeader();
-  const withData = D.meta.provinces.filter(p => D.series[p.province_code]
-    && D.series[p.province_code].rt.some(v => v !== null));
-  trendSelected = withData
-    .slice()
-    .sort((a, b) => {
-      const pa = D.provinces.find(x => x.province_code === a.province_code) || {};
-      const pb = D.provinces.find(x => x.province_code === b.province_code) || {};
-      return (pb.real_time_avg || 0) - (pa.real_time_avg || 0);
-    })
-    .slice(0, 5)
-    .map(p => p.province_code);
-  renderTrendChips();
-  renderTrend();
-
-  const provSel = $("#intraProvince");
-  withData.forEach(p => provSel.appendChild(new Option(p.province, p.province_code)));
-  const fillMonths = () => {
-    const monthSel = $("#intraMonth");
-    const months = Object.keys(D.profiles[provSel.value] || {}).sort();
-    monthSel.innerHTML = "";
-    months.forEach(m => monthSel.appendChild(new Option(m, m)));
-    monthSel.value = months[months.length - 1] || "";
-  };
-  fillMonths();
+  fillIntraMonths();
+  fillMatrixMonths();
+  selectIntraTop();
+  renderIntraChips();
   renderIntraday();
-  provSel.onchange = () => { fillMonths(); renderIntraday(); };
-  $("#intraMonth").onchange = renderIntraday;
+  renderMatrix();
+  $("#intraRange").onchange = () => {
+    const monthly = $("#intraRange").value === "month";
+    $("#intraMonthWrap").classList.toggle("hide", !monthly);
+    if (monthly) fillIntraMonths();
+    selectIntraTop(); renderIntraChips(); renderIntraday();
+  };
+  $("#intraMetric").onchange = renderIntraday;
+  $("#intraMonth").onchange = () => { selectIntraTop(); renderIntraChips(); renderIntraday(); };
+  $("#intraTop").onclick = () => { selectIntraTop(); renderIntraChips(); renderIntraday(); };
+  $("#intraAll").onclick = () => { selectIntraAll(); renderIntraChips(); renderIntraday(); };
+  $("#intraClear").onclick = () => { intraSelected = []; renderIntraChips(); renderIntraday(); };
+  $("#matrixRange").onchange = () => {
+    const monthly = $("#matrixRange").value === "month";
+    $("#matrixMonthWrap").classList.toggle("hide", !monthly);
+    if (monthly) fillMatrixMonths();
+    renderMatrix();
+  };
+  $("#matrixMetric").onchange = renderMatrix;
+  $("#matrixPoints").onchange = renderMatrix;
+  $("#matrixMonth").onchange = renderMatrix;
 
   renderRank();
   const distMonth = $("#distMonth");
@@ -915,18 +1253,12 @@ function boot(){
   renderHeat();
   renderTable();
 
-  ["trendMetric","trendRange"].forEach(id => $("#" + id).onchange = renderTrend);
   $("#rankMetric").onchange = renderRank;
   $("#distMonth").onchange = renderDistribution;
-  $("#trendTop").onclick = () => {
-    trendSelected = D.provinces.filter(p => p.real_time_avg !== null)
-      .sort((a, b) => b.real_time_avg - a.real_time_avg).slice(0, 6).map(p => p.province_code);
-    renderTrendChips(); renderTrend();
-  };
-  $("#trendClear").onclick = () => { trendSelected = []; renderTrendChips(); renderTrend(); };
   document.querySelectorAll("[data-png]").forEach(btn => btn.onclick = () =>
     exportPng(btn.dataset.png, btn.dataset.png.replace("Svg", "") + "_" + D.meta.end_date + ".png"));
   document.querySelectorAll("[data-csv]").forEach(btn => btn.onclick = () => exportCsv(btn.dataset.csv));
+  document.querySelectorAll("[data-xlsx]").forEach(btn => btn.onclick = () => exportExcel(btn.dataset.xlsx));
   document.querySelectorAll("[data-report]").forEach(btn => btn.onclick = exportSevenDayReport);
   $("#dlJson").onclick = () => download(
     new Blob([JSON.stringify(D.provinces, null, 2)], {type:"application/json"}), "区域汇总.json");
@@ -936,7 +1268,7 @@ function boot(){
     const now = document.documentElement.dataset.theme
       || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     document.documentElement.dataset.theme = now === "dark" ? "light" : "dark";
-    renderTrend(); renderIntraday(); renderRank(); renderDistribution(); renderHeat();
+    renderIntraday(); renderMatrix(); renderRank(); renderDistribution(); renderHeat();
   };
   setupConsole();
 }

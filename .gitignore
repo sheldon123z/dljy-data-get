@@ -1,7 +1,6 @@
 .venv/
 __pycache__/
 *.py[cod]
-.env
 .DS_Store
 .workbuddy/
 build-windows/
@@ -9,9 +8,8 @@ dist-windows/
 outputs/
 _responses/
 *.log
+web/build/
 data/raw/
 data/exports/
-data/raw.zip
-data/exports.zip
 data/logs/
 data/archive/

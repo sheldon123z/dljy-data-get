@@ -378,7 +378,7 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def main(argv=None) -> int:
+def main(argv=None, ready_callback=None) -> int:
     args = parse_args(argv)
     config.ensure_dirs()
     if not (config.RAW_DIR / "metadata.json").exists():
@@ -394,6 +394,8 @@ def main(argv=None) -> int:
     print("本地控制台已启动（仅本机可访问，关闭终端即停止）：", flush=True)
     print(f"  {url}", flush=True)
     print("按 Ctrl+C 退出。", flush=True)
+    if ready_callback:
+        ready_callback(url)
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

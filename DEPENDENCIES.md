@@ -6,6 +6,10 @@ Windows 便携版已经包含 Python 解释器、标准库和全部第三方包�
 Python、Node.js、npm、Docker 或 Excel，只需完整解压 ZIP 并双击
 `电力现货价格工作台.exe`。
 
+如果 Windows 开启了 Smart App Control，未使用商业证书签名的 PyInstaller EXE 可能会被
+系统直接阻止。此时使用 `SmartAppControl兼容版`，双击其中的 `启动工作台.cmd`。该版本
+自带 Python.org 官方签名的嵌入式运行时，同样不需要预装 Python。
+
 浏览器使用 Windows 已安装的默认浏览器。采集数据需要能访问电查查接口；大模型总结
 需要能访问用户选择的 DeepSeek、智谱 GLM 或 OpenAI 兼容接口。
 
@@ -14,6 +18,7 @@ Python、Node.js、npm、Docker 或 Excel，只需完整解压 ZIP 并双击
 | 依赖 | 锁定版本 | 用途 |
 | --- | --- | --- |
 | Python | 3.11—3.13，构建机使用 3.13 | 程序运行时 |
+| Python 官方嵌入式运行时 | 3.13.14 x64 | Smart App Control 兼容便携版 |
 | openpyxl | 3.1.5 | Excel 导入与导出 |
 | et-xmlfile | 2.0.0 | openpyxl 的 XML 写入依赖 |
 

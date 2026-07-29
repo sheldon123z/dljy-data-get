@@ -54,6 +54,10 @@ python run.py serve        # 打开本地控制台，之后都可以点按钮操
 完整解压后双击 `电力现货价格工作台.exe`，不需要安装 Python、Node.js 或 Excel。
 开发环境也可以直接双击 `启动网站.bat`。
 
+如果双击 EXE 没有反应，且 Windows 安全中心已开启 Smart App Control，请改用
+`电力现货价格工作台-SmartAppControl兼容版.zip`，完整解压后双击 `启动工作台.cmd`。
+该版本使用 Python.org 官方签名运行时，不需要关闭系统安全保护。
+
 `run.py serve` 会在终端打印一个带一次性密钥的地址并自动打开浏览器。页面顶部就是
 令牌输入框和「补采所有缺口 / 采集最近 3 天 / 导出 JSON / 导出 Excel / 生成周报」等按钮，
 下方是走势图、日内曲线、区域排行、覆盖热力图和可排序的区域汇总表，图表都能导出 PNG，
@@ -207,16 +211,18 @@ docker compose up --build
 已经生成便携版时，最终用户的操作只有：
 
 1. 完整解压 `电力现货价格工作台-Windows便携版.zip`。
-2. 双击 `电力现货价格工作台.exe`，默认浏览器会自动打开。
+2. 双击 `电力现货价格工作台.exe`；启动窗口会显示服务状态，并自动打开默认浏览器。
+   如果浏览器没有自动出现，点击启动窗口里的“打开工作台”。
 3. 首次采集时在“① 数据采集 Authorization”粘贴完整值；有 `Bearer ` 前缀时一并保留。
 4. 需要 AI 总结时在“② 模型 API Key”填写对应平台密钥并选择 Agent 模式。
-5. 使用完毕点击网页中的“退出 Windows 应用 / 本地服务”。
+5. 使用完毕点击启动窗口中的“退出应用”，或点击网页中的“退出 Windows 应用 / 本地服务”。
 
 便携包内已经包含 Python 解释器、运行库、项目代码和当前数据。请保留整个目录，不要单独
 移动 EXE。开发者重新打包只需在 PowerShell 运行：
 
 ```powershell
 .\build_windows.ps1
+.\build_smartapp_portable.ps1
 ```
 
 完整运行时、构建依赖、版本锁定和鉴权位置见 [`DEPENDENCIES.md`](DEPENDENCIES.md)。

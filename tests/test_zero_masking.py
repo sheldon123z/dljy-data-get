@@ -54,7 +54,7 @@ class MaskRealZeroPrices(unittest.TestCase):
             da_fn=lambda mm: 0.0 if mm in NOON else 300.0,
             rt_fn=lambda mm: 0.0 if mm in NOON else 350.0,
         )
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
         self.assertEqual(masked, 0, "午间光伏零价被误掩了")
         kept = [r for r in out if r[m.RT] == 0.0]
         self.assertTrue(kept, "真实零价应当保留")
@@ -64,7 +64,7 @@ class MaskRealZeroPrices(unittest.TestCase):
             da_fn=lambda mm: -50.0 if mm in NOON else 300.0,
             rt_fn=lambda mm: -80.0 if mm in NOON else 350.0,
         )
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
         self.assertEqual(masked, 0)
         self.assertTrue(any(r[m.RT] == -80.0 for r in out), "负电价不该受影响")
 
@@ -75,7 +75,7 @@ class MaskCollectionGaps(unittest.TestCase):
     def test_whole_column_zero_is_masked(self):
         # 整天日前全 0：日前是前一天就排好的完整曲线，不可能整天零
         day = full_day(da_fn=lambda mm: 0.0, rt_fn=lambda mm: 350.0)
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
         self.assertEqual(masked, 96)
         self.assertTrue(all(r[m.DA] is None for r in out), "整列全零应判缺失")
         self.assertTrue(all(r[m.RT] == 350.0 for r in out), "另一列不该被牵连")
@@ -86,7 +86,7 @@ class MaskCollectionGaps(unittest.TestCase):
             da_fn=lambda mm: 300.0,
             rt_fn=lambda mm: 0.0 if mm >= 14 * 60 else 350.0,
         )
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
         self.assertGreater(masked, 0)
         tail = [r for r in out if m._slot_min(r[m.TIME]) >= 14 * 60]
         self.assertTrue(all(r[m.RT] is None for r in tail), "跨晚高峰的零尾段应判缺失")
@@ -97,7 +97,7 @@ class MaskCollectionGaps(unittest.TestCase):
             da_fn=lambda mm: 0.0 if mm in EVENING else 300.0,
             rt_fn=lambda mm: 0.0 if mm in EVENING else 350.0,
         )
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
         self.assertGreater(masked, 0)
         peak = [r for r in out if m._slot_min(r[m.TIME]) in EVENING]
         self.assertTrue(all(r[m.DA] is None and r[m.RT] is None for r in peak))
@@ -122,7 +122,7 @@ class ResidualZerosAfterOtherRules(unittest.TestCase):
                 day.append((slot, 0.0, 200.0 + i))   # 残留：日前假零，实时真价
             else:
                 day.append((slot, 0.0, 0.0))          # 双零且延伸到 24:00
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
 
         da_left = [r[m.DA] for r in out if r[m.DA] is not None]
         self.assertEqual(da_left, [], "残留的全零日前列应被判缺失")
@@ -140,9 +140,46 @@ class ResidualZerosAfterOtherRules(unittest.TestCase):
             da_fn=lambda mm: 0.0 if mm == 11 * 60 else 300.0,
             rt_fn=lambda mm: 350.0,
         )
-        out, masked = m._mask_stored_zero_tail(day)
+        out, masked = m._mask_fake_zeros(day)
         self.assertEqual(masked, 0, "孤立的零点不该被规则三误伤")
         self.assertTrue(any(r[m.DA] == 0.0 for r in out))
+
+
+class MaskOrderWithUnclearedPoints(unittest.TestCase):
+    """直取路径要先掩未出清、再掩假零，顺序不能反。
+
+    fetch_live_price 走的是 _mask_uncleared → _mask_fake_zeros。盘中查当天时，
+    尚未出清的时点接口也返回 0；那些点必须先按"未出清"处理掉，
+    否则会被假零规则连累，把当天**已经出清**的真实价格一起判成缺失。
+    """
+
+    def test_settled_prices_survive_after_uncleared_masking(self):
+        today = "2026-08-19"
+        # 前 24 点已出清（有真实价），其余未出清（接口返回 0）
+        day = []
+        for i in range(1, 97):
+            minutes = i * 15
+            slot = f"{minutes // 60:02d}:{minutes % 60:02d}"
+            if i <= 24:
+                day.append((slot, 300.0 + i, 350.0 + i))
+            else:
+                day.append((slot, 0.0, 0.0))
+
+        rows, cleared_until, uncleared = m._mask_uncleared(day, today)
+        rows, faked = m._mask_fake_zeros(rows)
+
+        # 24 个已出清的真实价格必须一个不少地活下来
+        real = [r[m.RT] for r in rows if r[m.RT] is not None and r[m.RT] > 0]
+        self.assertEqual(len(real), 24, "已出清的真实价格被误掩了")
+        self.assertGreater(uncleared, 0, "未出清的点应当被识别出来")
+
+        stats = m._stats(rows, m.RT)
+        self.assertIsNotNone(stats.get("avg"))
+        self.assertGreater(stats["avg"], 0, "已出清部分的均价应当是正常值")
+
+        # 注：_mask_uncleared 有 CLEARING_LAG_CAP（6h）宽限期，落在窗口内的 0
+        # 既可能是未出清、也可能是真实零价，代码选择保留——宁可少掩也不误伤
+        # 真实零价。所以这里不断言"非 None 点数恰好等于 24"，那会随当前时刻漂移。
 
 
 class WarehouseInvariants(unittest.TestCase):

@@ -117,7 +117,7 @@ def _load_detail():
     cache, masked = {}, {}
     for k, v in index.items():
         rows = sorted(v.values(), key=lambda r: _slot_min(r[TIME]))
-        rows, n = _mask_stored_zero_tail(rows)
+        rows, n = _mask_fake_zeros(rows)
         cache[k] = rows
         if n:
             masked[k] = n
@@ -137,8 +137,8 @@ def _slot_min(slot: str) -> int:
         return -1
 
 
-def _mask_stored_zero_tail(rows: list):
-    """把数据仓里「无数据被写成 0」的实时价还原成 None。
+def _mask_fake_zeros(rows: list):
+    """把「无数据被写成 0」的价格还原成 None。数据仓读取和接口直取都要过这一关。
 
     接口对没有数据的时段返回数字 0.0（不是 null、不是空串，实测 96 个点全是 float），
     采集脚本 float() 之后原样落盘，于是数据仓里混着两种 0：
@@ -917,6 +917,15 @@ def t_fetch_live_price(a: dict) -> dict:
         }
 
     rows, cleared_until, uncleared = _mask_uncleared(rows, trade_date)
+
+    # 假零掩码：数据仓路径在 _load_detail 里做了，直取路径以前漏了。
+    # 两条路径的脏数据来源是同一个——接口对没有数据的时段返回数字 0——
+    # 只是一个从 CSV 读、一个从 HTTP 拿。实测黑龙江 2026-08-07、吉林 2026-08-10
+    # 接口至今仍返回 96 个点的日前价全 0（不是采集失败，是数据源就没有），
+    # 不掩的话这里会报 day_ahead.avg=0.00 并算出一个凭空的价差。
+    # 必须排在 _mask_uncleared 之后：未出清的点先掩成 None，才不会被误判成假零。
+    rows, faked = _mask_fake_zeros(rows)
+
     limit = min(_int(a.get("max_points"), MAX_CURVE_POINTS), 288)
     step = max(1, -(-len(rows) // limit))
     shown = rows[::step]
@@ -957,6 +966,13 @@ def t_fetch_live_price(a: dict) -> dict:
         "uncleared_points": uncleared,                # pending_points 的别名，保持向后兼容
         "realtime_complete": uncleared == 0,
         "in_warehouse": in_warehouse,
+        **({"data_quality": {
+            "missing_points": faked,
+            "reason": "接口对这些时点返回的是数字 0 而不是空值，已判为无数据并掩掉，"
+                      "不计入均价/最值/峰谷/价差",
+            "caveat": "这些时点是**数据源没有**，不是价格为 0；"
+                      "某一列整列如此，说明该区域该日这个市场就没有公布价格",
+        }} if faked else {}),
         # 也给 freshness，字段名与读数据仓的工具保持一致，agent 用同一条纪律即可；
         # source=live-api 表明这不是仓里的数。
         "freshness": {

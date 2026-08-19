@@ -54,13 +54,8 @@ SYNC_MAX_REQUESTS = 60
 # 实测延迟在半小时内（02:18 出清到 01:45），留 6 小时余量。
 CLEARING_LAG_CAP = timedelta(hours=6)
 
-# 小程序 UA，与 scripts/collect.py 保持一致——换掉可能被接口侧识别拦截。
-API_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/132.0.0.0 Safari/537.36 "
-    "MicroMessenger/7.0.20 MiniProgramEnv/Mac"
-)
+# UA 与错误分类都取自 common.py 的唯一定义（见 _api_post 里的惰性加载）。
+# 以前这里和 collect.py 各写一份，UA 换了容易漏改一边，429 的处理也已经漂移过。
 
 # 尾部零段若起始于这个时刻之前，判为采集截断而非真实零价。
 # 依据：真实零价由午间光伏过剩驱动，而晚高峰（19–21 点）是全天最贵的时段，
@@ -425,7 +420,7 @@ def _api_post(payload: dict, timeout: int = 40, retries: int = 2) -> dict:
         "Authorization": token,
         "Accept": "*/*",
         "Content-Type": "application/json",
-        "User-Agent": API_USER_AGENT,
+        "User-Agent": _common.API_USER_AGENT,
     }
     last_error = None
     for attempt in range(retries + 1):
@@ -438,15 +433,13 @@ def _api_post(payload: dict, timeout: int = 40, retries: int = 2) -> dict:
             conn.request("POST", path, body=body, headers=headers)
             resp = conn.getresponse()
             raw = resp.read()
-            if resp.status in (401, 403):
+            try:
+                _common.raise_for_api_status(resp.status)
+            except _common.ApiAuthError as exc:
                 raise TokenError(
-                    f"鉴权失败 HTTP {resp.status}，令牌已失效。"
-                    f"请在宿主机跑 `python run.py sniff`（自动抓）或 `python run.py token`（手工粘贴）更新。"
-                )
-            if resp.status == 429:
-                raise RuntimeError("接口限流 HTTP 429，请降低调用频率后重试")
-            if resp.status >= 400:
-                raise RuntimeError(f"HTTP {resp.status}")
+                    f"{exc}。请在宿主机跑 `python run.py sniff`（自动抓）"
+                    f"或 `python run.py token`（手工粘贴）更新。"
+                ) from exc
             result = json.loads(raw.decode("utf-8"))
             if result.get("code") != 200:
                 raise RuntimeError(
@@ -1029,6 +1022,24 @@ def t_sync_days(a: dict) -> dict:
         }
 
     raw_dir = RAW
+    # 抢在发请求之前探一次写锁：每天 09:30 的定时采集会持锁重写数据仓，
+    # 这时候硬采只会白白消耗接口配额，最后卡在落盘上。抢不到就直接让用户等。
+    try:
+        with _common.data_lock(raw_dir, timeout=2.0):
+            pass
+    except AttributeError:
+        pass          # 老版本 common.py 没有这把锁，按无锁行为继续
+    except Exception as exc:
+        if type(exc).__name__ == "DataLockBusy":
+            return {
+                "error": "数据仓正在被写入，本次同步已跳过",
+                "error_kind": "busy",
+                "reason": str(exc),
+                "hint": "通常是每日定时采集（09:30）在跑，等几分钟再试；"
+                        "只是想看数据用 get_daily_summary，想看最新用 fetch_live_price，两者都不受影响",
+            }
+        raise
+
     detail_path = raw_dir / _common.DETAIL_FILE
     quality_path = raw_dir / _common.QUALITY_FILE
     collected_at = _common.now_stamp()

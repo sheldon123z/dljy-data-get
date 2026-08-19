@@ -28,8 +28,12 @@ from common import (  # noqa: E402
     PRICE_UNIT,
     QUALITY_FIELDS,
     QUALITY_FILE,
+    API_USER_AGENT,
+    ApiAuthError,
+    ApiRateLimited,
     append_csv,
     build_outputs,
+    raise_for_api_status,
     date_strings,
     iter_csv,
     load_provinces,
@@ -45,12 +49,7 @@ from common import (  # noqa: E402
 
 THREAD_LOCAL = threading.local()
 
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/132.0.0.0 Safari/537.36 "
-    "MicroMessenger/7.0.20 MiniProgramEnv/Mac"
-)
+USER_AGENT = API_USER_AGENT   # 唯一定义在 common.py，避免两处漂移
 
 
 def parse_args(argv=None):
@@ -128,17 +127,19 @@ def request_json(token: str, payload: dict, retries: int, timeout: int):
             conn.request("POST", path, body=body, headers=headers)
             response = conn.getresponse()
             raw = response.read()
-            if response.status in (401, 403):
-                raise PermissionError(f"鉴权失败：HTTP {response.status}，令牌可能已过期")
-            if response.status >= 400:
-                raise RuntimeError(f"HTTP {response.status}")
+            raise_for_api_status(response.status)
             result = json.loads(raw.decode("utf-8"))
             if result.get("code") != 200:
                 raise RuntimeError(
                     f"API code {result.get('code')}: {result.get('message') or result.get('msg')}"
                 )
             return result
-        except PermissionError:
+        except ApiAuthError as exc:
+            # 令牌失效，重试无意义。转成 PermissionError 保持上层既有的处理路径
+            close_connection()
+            raise PermissionError(str(exc)) from exc
+        except ApiRateLimited:
+            # 限流时重试是火上浇油，直接抛给上层降频
             close_connection()
             raise
         except Exception as exc:
@@ -231,22 +232,156 @@ def resolve_dates(args, raw_dir: Path) -> tuple[str, str, list[str]]:
     return repo_start, repo_end, window
 
 
+def _is_blank_price(value: str) -> bool:
+    return not (value or "").strip()
+
+
+def _as_float(value: str):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def missing_price_tasks(raw_dir: Path, provinces: list[dict], window: list[str]) -> list[tuple[dict, str]]:
-    """找出明细中任一价格字段为空的区域日，作为定向重采任务。
+    """找出明细中价格残缺的区域日，作为定向重采任务。
 
     不以 quality.csv 的 available 状态为准，因为接口可能返回完整时点但其中
     的日前价或实时价为空；这种情况需要保留区域日状态并单独补拉价格字段。
+
+    两种残缺都要认：
+      · **空字段**——接口没给这一列；
+      · **整列全是 0**——接口对无数据时段返回的是数字 0 而不是 null，
+        落盘后看着"有值"，`available` 也照标，于是增量采集永远跳过它们，
+        这批脏数据就一直留在仓里（实测 149 个区域日、6683 个点）。
+        判据取"该列非空值全为 0"：真实出清不可能整天零——日前是前一天
+        排好的完整曲线，实时的零价只出现在午间光伏过剩的窗口，晚高峰不可能是 0。
+        只有个别时点为 0 的日子不算，那可能是真实的地板价。
     """
     selected = {province["province_code"]: province for province in provinces}
     window_set = set(window)
     incomplete: set[tuple[str, str]] = set()
+    # (code, date) -> {列名: [该列出现过的非空值...]}，用来判断某列是不是全零
+    seen: dict[tuple[str, str], dict[str, list[str]]] = {}
+
     for row in iter_csv(raw_dir / DETAIL_FILE):
         code, trade_date = row["province_code"], row["trade_date"]
         if code not in selected or trade_date not in window_set:
             continue
-        if not (row.get("day_ahead_price") or "").strip() or not (row.get("real_time_price") or "").strip():
-            incomplete.add((code, trade_date))
+        key = (code, trade_date)
+        da, rt = row.get("day_ahead_price"), row.get("real_time_price")
+        if _is_blank_price(da) or _is_blank_price(rt):
+            incomplete.add(key)
+        bucket = seen.setdefault(key, {"day_ahead_price": [], "real_time_price": []})
+        if not _is_blank_price(da):
+            bucket["day_ahead_price"].append(da.strip())
+        if not _is_blank_price(rt):
+            bucket["real_time_price"].append(rt.strip())
+
+    for key, cols in seen.items():
+        for values in cols.values():
+            if values and all(_as_float(v) == 0.0 for v in values):
+                incomplete.add(key)
+                break
+
+    # 剔除两类"重采也补不回来"的区域日，否则每天的定时任务都在白跑。
+    # 实测全量窗口下 949 个待采里有 598 个属于这两类（63%）。
+    incomplete -= _drop_unrecoverable(raw_dir, selected, window_set, incomplete)
+
     return [(selected[code], trade_date) for code, trade_date in sorted(incomplete, key=lambda item: (item[1], item[0]))]
+
+
+def _is_evenly_gridded(slots: list[str]) -> bool:
+    """有值的时点是否按固定间隔铺满全天——那是粒度差异，不是缺失。
+
+    江西的日前价是 96 点（15 分钟）、实时价是 288 点（5 分钟），对齐到同一张
+    明细表后，日前在非整刻的时点上必然为空。全年 201 天天天如此，
+    却被"字段为空"判据全部当成待补，白采一整年。
+    """
+    if len(slots) < 3:
+        return False
+    mins = sorted(_slot_minutes(s) for s in slots)
+    if mins[0] < 0:
+        return False
+    step = mins[1] - mins[0]
+    if step <= 0:
+        return False
+    return all(b - a == step for a, b in zip(mins, mins[1:]))
+
+
+def _slot_minutes(slot: str) -> int:
+    try:
+        hh, mm = slot.split(":")
+        return int(hh) * 60 + int(mm)
+    except (ValueError, AttributeError):
+        return -1
+
+
+def _drop_unrecoverable(raw_dir: Path, selected: dict, window_set: set, candidates: set) -> set:
+    """从待补候选里筛掉「重采也拿不回来」的区域日。
+
+    不是所有"字段为空"都值得重采。实测全量窗口下，原判据给出 949 个待补，
+    其中绝大多数属于下面三类，重采纯属浪费接口配额：
+
+    1. **结构性缺失**——该区域该列压根没有这个市场的价格：四川、蒙西的日前价
+       在整个窗口 100% 为空（203 天 / 194 天），数据源就没有。
+    2. **粒度差异**——江西日前 96 点(15min)、实时 288 点(5min)，对齐到一张表后
+       日前在非整刻时点上必然为空，全年 201 天天天如此。见 _is_evenly_gridded。
+    3. **假零**——接口对无数据时段返回数字 0。2026-08-19 实测重采 183 个区域日，
+       139 个补到了真数据，但 149 个假零区域日**一个都没修好**：接口至今返回的
+       仍是全 0（黑龙江 2026-08-07、吉林 2026-08-10 复核过），数据源就是没有。
+
+    真正"没采到"的区域日由 quality.csv 的 missing/failed 状态负责，走 pending_tasks。
+    """
+    if not candidates:
+        return set()
+
+    per_day: dict[tuple[str, str], dict] = {}
+    province_totals: dict[str, dict[str, int]] = {}
+
+    for row in iter_csv(raw_dir / DETAIL_FILE):
+        code, trade_date = row["province_code"], row["trade_date"]
+        if code not in selected or trade_date not in window_set:
+            continue
+        # 该省该列在整个窗口里出现过多少个值——用来识别"这个省根本没有这个市场"
+        acc = province_totals.setdefault(code, {"day_ahead_price": 0, "real_time_price": 0})
+        filled = {}
+        for field in ("day_ahead_price", "real_time_price"):
+            ok = not _is_blank_price(row.get(field))
+            filled[field] = ok
+            if ok:
+                acc[field] += 1
+        if (code, trade_date) not in candidates:
+            continue
+        bucket = per_day.setdefault(
+            (code, trade_date),
+            {"day_ahead_price": [], "real_time_price": [], "total": 0},
+        )
+        bucket["total"] += 1
+        for field, ok in filled.items():
+            if ok:
+                bucket[field].append(row.get("time_slot", ""))
+
+    def has_recoverable_gap(code: str, field: str, slots: list, total: int) -> bool:
+        if province_totals.get(code, {}).get(field, 0) == 0:
+            return False                     # 该省该列全窗口无值：数据源没有这个市场
+        if not slots:
+            return True                      # 这天一个值都没有，但别的天有 → 可能是漏采
+        if len(slots) >= total:
+            return False                     # 这一列是满的
+        if _is_evenly_gridded(slots):
+            return False                     # 等间隔铺满：粒度差异，不是缺失
+        return True
+
+    unrecoverable = set()
+    for key, cols in per_day.items():
+        code = key[0]
+        if not any(
+            has_recoverable_gap(code, field, cols[field], cols["total"])
+            for field in ("day_ahead_price", "real_time_price")
+        ):
+            unrecoverable.add(key)
+    return unrecoverable
 
 
 def main(argv=None) -> int:

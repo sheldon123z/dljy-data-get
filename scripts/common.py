@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import json
 import sys
+import threading
+import time
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -19,6 +23,41 @@ PROVINCE_URL = f"{BASE_URL}/electricCheckApi/home/list/province"
 DETAIL_URL = f"{BASE_URL}/electricCheckApi/queryData/clearPrice/detail"
 
 PRICE_UNIT = "元/MWh"
+
+# 小程序 UA。换掉可能被接口侧识别拦截，所以**只在这里定义一份**——
+# 以前 collect.py 和 mcp/power_price_mcp.py 各写各的，迟早漂移。
+API_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/132.0.0.0 Safari/537.36 "
+    "MicroMessenger/7.0.20 MiniProgramEnv/Mac"
+)
+
+
+class ApiAuthError(RuntimeError):
+    """令牌失效。要人工换令牌，重试多少次都没用。"""
+
+
+class ApiRateLimited(RuntimeError):
+    """接口限流。重试只会让情况更糟，必须退到上层降频。"""
+
+
+def raise_for_api_status(status: int) -> None:
+    """把 HTTP 状态翻译成"要不要重试"这个决定。
+
+    两类必须和普通错误区分开：
+      · 401/403 —— 令牌失效，重试无意义，得人去抓包换令牌；
+      · 429     —— 限流，重试是火上浇油，得降频。
+
+    以前只有 MCP 侧单独认 429，collect.py 把它混在 `status >= 400` 里
+    指数退避重试 4 次。同一个接口两套脾气，这里收敛成一份。
+    """
+    if status in (401, 403):
+        raise ApiAuthError(f"鉴权失败：HTTP {status}，令牌可能已过期")
+    if status == 429:
+        raise ApiRateLimited("接口限流 HTTP 429，请降低并发或加大 --delay 后重试")
+    if status >= 400:
+        raise RuntimeError(f"HTTP {status}")
 
 DETAIL_FIELDS = [
     "province",
@@ -105,6 +144,62 @@ def iter_csv(path: Path) -> Iterator[dict[str, str]]:
         yield from csv.DictReader(handle)
 
 
+class DataLockBusy(RuntimeError):
+    """数据仓写锁被别人占着。调用方应当告诉用户"稍后再试"，而不是硬写。"""
+
+
+_WRITE_LOCK = threading.RLock()
+_lock_depth = 0
+_lock_handle = None
+
+
+@contextmanager
+def data_lock(raw_dir: Path, timeout: float = 120.0):
+    """数据仓的跨进程写锁。
+
+    冲突是真实存在的，不是理论风险：
+      · automation/daily_update.sh 每天 09:30 采集并跑 build_outputs，
+        后者会整体重写 quality / daily_summary / province_summary / metadata；
+      · MCP 的 sync_days 由 agent 调用，**用户随时可以触发**，走同一套写入。
+    两边撞上，轻则统计表被写乱，重则 append 交错——一次 96 行的明细约 8–10KB，
+    超过 PIPE_BUF 的 4096 字节，操作系统不保证整块原子写入。
+
+    读方不需要这把锁：write_csv 是「写临时文件 + rename」的原子替换，
+    读到的要么是旧版本要么是新版本，不会是半截。
+
+    进程内用 RLock 允许重入（同一线程里 build_outputs 套 append_csv 不会自锁），
+    进程间用 flock 轮询等待，超时抛 DataLockBusy 而不是无限等下去。
+    """
+    global _lock_depth, _lock_handle
+    with _WRITE_LOCK:
+        if _lock_depth == 0:
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            handle = (raw_dir / ".write.lock").open("w")
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        handle.close()
+                        raise DataLockBusy(
+                            f"数据仓正被另一个进程写入（等待 {timeout:.0f}s 未获得锁）。"
+                            "通常是每日采集任务在跑，稍后重试即可。"
+                        )
+                    time.sleep(0.2)
+            _lock_handle = handle
+        _lock_depth += 1
+        try:
+            yield
+        finally:
+            _lock_depth -= 1
+            if _lock_depth == 0 and _lock_handle is not None:
+                fcntl.flock(_lock_handle.fileno(), fcntl.LOCK_UN)
+                _lock_handle.close()
+                _lock_handle = None
+
+
 def write_csv(path: Path, fields: list[str], rows: Iterable[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(path.suffix + ".tmp")
@@ -112,6 +207,7 @@ def write_csv(path: Path, fields: list[str], rows: Iterable[dict]) -> None:
         writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+    # 原子替换：读方要么看到旧版本要么看到新版本，不会读到半截文件
     temp_path.replace(path)
 
 
@@ -120,13 +216,14 @@ def append_csv(path: Path, fields: list[str], rows: Iterable[dict]) -> None:
     if not rows:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    exists = path.exists() and path.stat().st_size > 0
-    with path.open("a", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-        if not exists:
-            writer.writeheader()
-        writer.writerows(rows)
-        handle.flush()
+    with data_lock(path.parent):
+        exists = path.exists() and path.stat().st_size > 0
+        with path.open("a", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+            if not exists:
+                writer.writeheader()
+            writer.writerows(rows)
+            handle.flush()
 
 
 # ---------------------------------------------------------------- 数值
@@ -256,6 +353,19 @@ def build_outputs(
     因此 collect.py 可以放心地追加写。
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    # 一次重写 quality / daily_summary / province_summary / metadata 四个文件，
+    # 对外必须表现为一个步骤——中途被另一个进程插进来写明细，重算结果就是错的
+    with data_lock(output_dir):
+        return _build_outputs_locked(output_dir, provinces, start_text, end_text, collection_status)
+
+
+def _build_outputs_locked(
+    output_dir: Path,
+    provinces: list[dict[str, str]],
+    start_text: str,
+    end_text: str,
+    collection_status: str,
+) -> dict:
     detail_path = output_dir / DETAIL_FILE
     quality_path = output_dir / QUALITY_FILE
 

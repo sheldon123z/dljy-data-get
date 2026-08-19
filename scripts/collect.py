@@ -231,22 +231,59 @@ def resolve_dates(args, raw_dir: Path) -> tuple[str, str, list[str]]:
     return repo_start, repo_end, window
 
 
+def _is_blank_price(value: str) -> bool:
+    return not (value or "").strip()
+
+
 def missing_price_tasks(raw_dir: Path, provinces: list[dict], window: list[str]) -> list[tuple[dict, str]]:
-    """找出明细中任一价格字段为空的区域日，作为定向重采任务。
+    """找出明细中价格残缺的区域日，作为定向重采任务。
 
     不以 quality.csv 的 available 状态为准，因为接口可能返回完整时点但其中
     的日前价或实时价为空；这种情况需要保留区域日状态并单独补拉价格字段。
+
+    两种残缺都要认：
+      · **空字段**——接口没给这一列；
+      · **整列全是 0**——接口对无数据时段返回的是数字 0 而不是 null，
+        落盘后看着"有值"，`available` 也照标，于是增量采集永远跳过它们，
+        这批脏数据就一直留在仓里（实测 149 个区域日、6683 个点）。
+        判据取"该列非空值全为 0"：真实出清不可能整天零——日前是前一天
+        排好的完整曲线，实时的零价只出现在午间光伏过剩的窗口，晚高峰不可能是 0。
+        只有个别时点为 0 的日子不算，那可能是真实的地板价。
     """
     selected = {province["province_code"]: province for province in provinces}
     window_set = set(window)
     incomplete: set[tuple[str, str]] = set()
+    # (code, date) -> {列名: [该列出现过的非空值...]}，用来判断某列是不是全零
+    seen: dict[tuple[str, str], dict[str, list[str]]] = {}
+
     for row in iter_csv(raw_dir / DETAIL_FILE):
         code, trade_date = row["province_code"], row["trade_date"]
         if code not in selected or trade_date not in window_set:
             continue
-        if not (row.get("day_ahead_price") or "").strip() or not (row.get("real_time_price") or "").strip():
-            incomplete.add((code, trade_date))
+        key = (code, trade_date)
+        da, rt = row.get("day_ahead_price"), row.get("real_time_price")
+        if _is_blank_price(da) or _is_blank_price(rt):
+            incomplete.add(key)
+        bucket = seen.setdefault(key, {"day_ahead_price": [], "real_time_price": []})
+        if not _is_blank_price(da):
+            bucket["day_ahead_price"].append(da.strip())
+        if not _is_blank_price(rt):
+            bucket["real_time_price"].append(rt.strip())
+
+    for key, cols in seen.items():
+        for values in cols.values():
+            if values and all(_as_float(v) == 0.0 for v in values):
+                incomplete.add(key)
+                break
+
     return [(selected[code], trade_date) for code, trade_date in sorted(incomplete, key=lambda item: (item[1], item[0]))]
+
+
+def _as_float(value: str):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def main(argv=None) -> int:

@@ -13,3 +13,6 @@ data/raw/
 data/exports/
 data/logs/
 data/archive/
+
+# 数据仓写锁（common.data_lock）
+data/raw/.write.lock

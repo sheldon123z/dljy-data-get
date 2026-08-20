@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import fcntl
 import json
 import sys
 import threading
@@ -13,6 +12,12 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Iterator
+
+try:  # POSIX 有 fcntl；Windows 用 msvcrt 实现等价的跨进程文件锁
+    import fcntl
+except ImportError:  # pragma: no cover - 仅 Windows 走这里
+    fcntl = None
+    import msvcrt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -153,6 +158,30 @@ _lock_depth = 0
 _lock_handle = None
 
 
+def _try_lock_exclusive(handle) -> bool:
+    """尝试非阻塞加排他锁。POSIX 用 flock，Windows 用 msvcrt.locking。"""
+    if fcntl is not None:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+    try:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        return True
+    except OSError:
+        return False
+
+
+def _release_lock(handle) -> None:
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    else:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
 @contextmanager
 def data_lock(raw_dir: Path, timeout: float = 120.0):
     """数据仓的跨进程写锁。
@@ -168,7 +197,8 @@ def data_lock(raw_dir: Path, timeout: float = 120.0):
     读到的要么是旧版本要么是新版本，不会是半截。
 
     进程内用 RLock 允许重入（同一线程里 build_outputs 套 append_csv 不会自锁），
-    进程间用 flock 轮询等待，超时抛 DataLockBusy 而不是无限等下去。
+    进程间用 flock（Windows 上为 msvcrt.locking）轮询等待，超时抛
+    DataLockBusy 而不是无限等下去。
     """
     global _lock_depth, _lock_handle
     with _WRITE_LOCK:
@@ -177,17 +207,15 @@ def data_lock(raw_dir: Path, timeout: float = 120.0):
             handle = (raw_dir / ".write.lock").open("w")
             deadline = time.monotonic() + timeout
             while True:
-                try:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if _try_lock_exclusive(handle):
                     break
-                except OSError:
-                    if time.monotonic() >= deadline:
-                        handle.close()
-                        raise DataLockBusy(
-                            f"数据仓正被另一个进程写入（等待 {timeout:.0f}s 未获得锁）。"
-                            "通常是每日采集任务在跑，稍后重试即可。"
-                        )
-                    time.sleep(0.2)
+                if time.monotonic() >= deadline:
+                    handle.close()
+                    raise DataLockBusy(
+                        f"数据仓正被另一个进程写入（等待 {timeout:.0f}s 未获得锁）。"
+                        "通常是每日采集任务在跑，稍后重试即可。"
+                    )
+                time.sleep(0.2)
             _lock_handle = handle
         _lock_depth += 1
         try:
@@ -195,7 +223,7 @@ def data_lock(raw_dir: Path, timeout: float = 120.0):
         finally:
             _lock_depth -= 1
             if _lock_depth == 0 and _lock_handle is not None:
-                fcntl.flock(_lock_handle.fileno(), fcntl.LOCK_UN)
+                _release_lock(_lock_handle)
                 _lock_handle.close()
                 _lock_handle = None
 

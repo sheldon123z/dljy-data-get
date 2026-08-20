@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 APP_NAME = "电力现货价格工作台"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.1.0"
 SCRIPT_MODULES = {
     "collect.py": "collect",
     "export_json.py": "export_json",

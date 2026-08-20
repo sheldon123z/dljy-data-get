@@ -45,6 +45,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .chip.off{opacity:.45}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 .row label{color:var(--muted);font-size:12.5px}
+.tabs{display:flex;gap:4px;margin:0 0 12px;border-bottom:1px solid var(--line)}
+.tab{margin:0 0 -1px;border:0;border-bottom:2px solid transparent;border-radius:0;padding:7px 12px;color:var(--muted);background:transparent}
+.tab[aria-selected="true"]{border-bottom-color:var(--accent);color:var(--accent);font-weight:600}
+.tab-panel{display:none}.tab-panel.active{display:block}
 .chart{width:100%;overflow-x:auto;position:relative}
 .svg-tooltip{position:absolute;z-index:3;display:none;pointer-events:none;min-width:132px;max-width:280px;
   padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--fg);
@@ -169,6 +173,36 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
 <section class="kpis" id="kpis"></section>
 
 <section class="panel">
+  <h2>日均价格走势
+    <span class="tools"><button data-png="dailySvg">导出 PNG</button><button data-xlsx="daily">导出 Excel</button></span>
+  </h2>
+  <div class="row">
+    <label>统计口径</label>
+    <select id="dailyRange">
+      <option value="7" selected>最近 7 天</option>
+      <option value="14">最近 14 天</option>
+      <option value="30">最近 30 天</option>
+      <option value="180">近半年</option>
+    </select>
+    <label>价格口径</label>
+    <select id="dailyMetric"><option value="real_time">实时价格</option><option value="day_ahead">日前价格</option></select>
+  </div>
+  <div class="tabs" role="tablist" aria-label="日均价格视图">
+    <button class="tab" type="button" role="tab" id="dailyTableTab" aria-selected="true" aria-controls="dailyTablePanel">日均价表</button>
+    <button class="tab" type="button" role="tab" id="dailyChartTab" aria-selected="false" aria-controls="dailyChartPanel">趋势折线图</button>
+  </div>
+  <div class="tab-panel active" id="dailyTablePanel" role="tabpanel" aria-labelledby="dailyTableTab">
+    <div class="matrix-wrap"><table class="matrix" id="dailyTable"><thead></thead><tbody></tbody></table></div>
+  </div>
+  <div class="tab-panel" id="dailyChartPanel" role="tabpanel" aria-labelledby="dailyChartTab">
+    <div class="row"><button id="dailyTop" type="button">选取均价前 6</button><button id="dailyAll" type="button">全选全部区域</button><button id="dailyClear" type="button">清空选择</button></div>
+    <div class="chips" id="dailyChips"></div>
+    <div class="chart" id="dailyChart"></div>
+  </div>
+  <p class="note" id="dailyNote">每个日期仅保留一个均价：该地区当日所有有效时段价格的平均值；横轴为过去日期，缺失值不按 0 补齐。</p>
+</section>
+
+<section class="panel">
   <h2>多天同一时点均价走势
     <span class="tools">
       <button data-png="intraSvg">导出 PNG</button>
@@ -181,6 +215,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
       <option value="7" selected>最近 7 天</option>
       <option value="14">最近 14 天</option>
       <option value="30">最近 30 天</option>
+      <option value="180">近半年</option>
       <option value="month">按月</option>
     </select>
     <label>价格口径</label>
@@ -203,6 +238,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
       <option value="7" selected>最近 7 天</option>
       <option value="14">最近 14 天</option>
       <option value="30">最近 30 天</option>
+      <option value="180">近半年</option>
       <option value="month">按月</option>
     </select>
     <label>价格口径</label>
@@ -427,6 +463,129 @@ function renderTrend(){
   host.appendChild(svg);
   addLineTooltip(host, svg, {width:W, left:L, right:R, top:T, bottom:H-B, count:dates.length, x,
     at:i => ({title:dates[i], lines:lines.map(l => `${l.name}：${fmt(l.values[i])} 元/MWh`)})});
+}
+
+/* ------------------------------------------------------------------ 日均价格：表格 / 折线图 */
+let dailySelected = [];
+function dailyScope(){
+  const days = +$("#dailyRange").value;
+  const dates = D.dates.slice(-days);
+  return {days, dates, offset:D.dates.length - dates.length};
+}
+function dailyValues(code, metric, scope = dailyScope()){
+  const series = D.series[code];
+  if (!series) return [];
+  return (metric === "day_ahead" ? series.da : series.rt).slice(scope.offset);
+}
+function dailyRows(scope = dailyScope()){
+  const metric = $("#dailyMetric").value;
+  return D.meta.provinces.map(province => ({province, values:dailyValues(province.province_code, metric, scope)}))
+    .filter(row => row.values.some(value => value !== null && value !== undefined));
+}
+function renderDailyTable(){
+  const scope = dailyScope(), rows = dailyRows(scope);
+  const table = $("#dailyTable"), thead = table.querySelector("thead"), tbody = table.querySelector("tbody");
+  thead.innerHTML = ""; tbody.innerHTML = "";
+  if (!rows.length || !scope.dates.length){
+    tbody.innerHTML = '<tr><td>当前统计口径没有可展示的数据。</td></tr>';
+    return;
+  }
+  const values = rows.flatMap(row => row.values).filter(value => Number.isFinite(value));
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const head = document.createElement("tr");
+  ["地区", ...scope.dates].forEach(label => { const th = document.createElement("th"); th.textContent = label; head.appendChild(th); });
+  thead.appendChild(head);
+  rows.forEach(row => {
+    const tr = document.createElement("tr"), name = document.createElement("td");
+    name.textContent = row.province.province; tr.appendChild(name);
+    row.values.forEach((value, index) => {
+      const td = document.createElement("td");
+      if (!Number.isFinite(value)) { td.textContent = "—"; td.className = "matrix-empty"; }
+      else { td.textContent = Number(value).toFixed(2); td.style.background = matrixColor(value, lo, hi); }
+      td.title = `${row.province.province} ${scope.dates[index]}｜${$("#dailyMetric").value === "real_time" ? "实时" : "日前"}日均价：${fmt(value)} 元/MWh`;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+function renderDailyChips(){
+  const box = $("#dailyChips"), scope = dailyScope(), metric = $("#dailyMetric").value;
+  box.innerHTML = "";
+  D.meta.provinces.forEach(province => {
+    const has = dailyValues(province.province_code, metric, scope).some(value => Number.isFinite(value));
+    const chip = document.createElement("button");
+    chip.className = "chip" + (has ? "" : " off"); chip.type = "button"; chip.textContent = province.province; chip.disabled = !has;
+    chip.setAttribute("aria-pressed", dailySelected.includes(province.province_code));
+    chip.onclick = () => {
+      const index = dailySelected.indexOf(province.province_code);
+      if (index >= 0) dailySelected.splice(index, 1); else dailySelected.push(province.province_code);
+      renderDailyChips(); renderDailyChart();
+    };
+    box.appendChild(chip);
+  });
+}
+function selectDailyTop(){
+  const scope = dailyScope(), metric = $("#dailyMetric").value;
+  dailySelected = dailyRows(scope).map(row => ({code:row.province.province_code, average:average(row.values)}))
+    .filter(row => Number.isFinite(row.average)).sort((a, b) => b.average - a.average).slice(0, 6).map(row => row.code);
+}
+function selectDailyAll(){
+  const scope = dailyScope(), metric = $("#dailyMetric").value;
+  dailySelected = D.meta.provinces.filter(province => dailyValues(province.province_code, metric, scope).some(value => Number.isFinite(value)))
+    .map(province => province.province_code);
+}
+function renderDailyChart(){
+  const host = $("#dailyChart"), scope = dailyScope(), metric = $("#dailyMetric").value;
+  host.innerHTML = "";
+  const lines = dailySelected.map((code, index) => ({code, name:nameOf(code), color:PALETTE[index % PALETTE.length], values:dailyValues(code, metric, scope)}))
+    .filter(line => line.values.some(value => Number.isFinite(value)));
+  if (!lines.length){ host.innerHTML = '<p class="note">请选择至少一个有数据的区域。</p>'; return; }
+  const flat = lines.flatMap(line => line.values).filter(value => Number.isFinite(value));
+  const W = 1080, H = 360, L = 62, R = 18, T = 20, B = 52;
+  let lo = Math.min(...flat), hi = Math.max(...flat);
+  if (lo === hi){ lo -= 1; hi += 1; }
+  const padding = (hi - lo) * .1; lo -= padding; hi += padding;
+  const x = index => L + (scope.dates.length === 1 ? 0 : index * (W - L - R) / (scope.dates.length - 1));
+  const y = value => H - B - (value - lo) / (hi - lo) * (H - T - B);
+  const fg = cssVar("--fg"), muted = cssVar("--muted"), grid = cssVar("--line");
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:W, height:H, id:"dailySvg", "font-family":"sans-serif"});
+  for (let tick = 0; tick <= 4; tick++){
+    const value = lo + (hi - lo) * tick / 4, yy = y(value);
+    svg.appendChild(el("line", {x1:L, y1:yy, x2:W-R, y2:yy, stroke:grid, "stroke-width":1}));
+    svg.appendChild(el("text", {x:L-8, y:yy+4, "font-size":11, fill:muted, "text-anchor":"end"}, value.toFixed(0)));
+  }
+  scope.dates.forEach((date, index) => svg.appendChild(el("text", {x:x(index), y:H-B+18, "font-size":11, fill:muted, "text-anchor":"middle"}, date.slice(5))));
+  lines.forEach(line => {
+    let path = "", pen = false;
+    line.values.forEach((value, index) => {
+      if (!Number.isFinite(value)){ pen = false; return; }
+      path += (pen ? " L" : " M") + x(index).toFixed(1) + "," + y(value).toFixed(1); pen = true;
+    });
+    if (path) svg.appendChild(el("path", {d:path.trim(), fill:"none", stroke:line.color, "stroke-width":2.5, "stroke-linejoin":"round", "stroke-linecap":"round"}));
+  });
+  let legendX = L;
+  lines.forEach(line => {
+    svg.appendChild(el("rect", {x:legendX, y:H-16, width:11, height:11, rx:2, fill:line.color}));
+    svg.appendChild(el("text", {x:legendX+16, y:H-6, "font-size":12, fill:fg}, line.name));
+    legendX += 30 + line.name.length * 13;
+  });
+  svg.appendChild(el("text", {x:L, y:T-4, "font-size":11, fill:muted}, `最近 ${scope.days} 天每日平均${metric === "real_time" ? "实时价格" : "日前价格"}（元/MWh）`));
+  host.appendChild(svg);
+  addLineTooltip(host, svg, {width:W, left:L, right:R, top:T, bottom:H-B, count:scope.dates.length, x,
+    at:index => ({title:scope.dates[index], lines:lines.map(line => `${line.name}：${fmt(line.values[index])} 元/MWh`)})});
+}
+function setDailyTab(tab){
+  const isTable = tab === "table";
+  $("#dailyTableTab").setAttribute("aria-selected", String(isTable));
+  $("#dailyChartTab").setAttribute("aria-selected", String(!isTable));
+  $("#dailyTablePanel").classList.toggle("active", isTable);
+  $("#dailyChartPanel").classList.toggle("active", !isTable);
+  if (!isTable) renderDailyChart();
+}
+function renderDaily(){
+  renderDailyTable(); renderDailyChips(); renderDailyChart();
+  const scope = dailyScope(), metric = $("#dailyMetric").value;
+  $("#dailyNote").textContent = `${scope.dates[0] || ""} 至 ${scope.dates.at(-1) || ""}｜每个日期仅保留一个均价：该地区当日所有有效时段${metric === "real_time" ? "实时" : "日前"}价格的平均值；缺失值不按 0 补齐。`;
 }
 
 /* ------------------------------------------------------------------ 同一时点均价曲线 */
@@ -800,6 +959,11 @@ function renderTable(){
 }
 
 /* ------------------------------------------------------------------ 导出 */
+function rangeLabel(range){
+  if (range === "month") return "按月";
+  if (+range === 180) return "近半年";
+  return range + "天";
+}
 function download(blob, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -938,7 +1102,7 @@ function exportMatrixExcel(){
     {name:"xl/worksheets/sheet2.xml", data:matrixXlsxSheet("real_time", matrix)},
   ];
   const end = scope.dates.at(-1) || $("#matrixMonth").value || D.meta.end_date;
-  download(xlsxZip(files), `分省分时均价表_${matrix.points}点_日前与实时_${scope.range === "month" ? "按月" : scope.range + "天"}_${end}.xlsx`);
+  download(xlsxZip(files), `分省分时均价表_${matrix.points}点_日前与实时_${rangeLabel(scope.range)}_${end}.xlsx`);
 }
 function intradayExportProfiles(scope){
   return D.meta.provinces.map(province => ({province, entry:scope.profiles[province.province_code]})).filter(item => item.entry);
@@ -967,7 +1131,7 @@ function exportIntradayExcel(){
     sheets.push({name:province.province, chart:{title:`${province.province}同一时点均价走势`, lastRow:rows.length + 1}, xml:xlsxTableSheet(headers.slice(0,5), rows, true)});
   });
   const end = scope.dates.at(-1) || $("#intraMonth").value || D.meta.end_date;
-  download(xlsxWorkbook(sheets), `同一时点均价_${scope.range === "month" ? "按月" : scope.range + "天"}_${end}.xlsx`);
+  download(xlsxWorkbook(sheets), `同一时点均价_${rangeLabel(scope.range)}_${end}.xlsx`);
 }
 function exportSimpleExcel(kind){
   let headers, rows, name;
@@ -979,9 +1143,19 @@ function exportSimpleExcel(kind){
   }
   download(xlsxWorkbook([{name:kind === "rank" ? "区域排行" : "区域汇总", xml:xlsxTableSheet(headers, rows)}]), name);
 }
+function exportDailyExcel(){
+  const scope = dailyScope(), metric = $("#dailyMetric").value, rows = dailyRows(scope);
+  if (!rows.length || !scope.dates.length){ alert("当前统计口径没有可导出的数据。"); return; }
+  const metricName = metric === "real_time" ? "实时价格" : "日前价格";
+  const headers = ["地区", "区域代码", ...scope.dates];
+  const data = rows.map(row => [row.province.province, row.province.province_code, ...row.values]);
+  const end = scope.dates.at(-1) || D.meta.end_date;
+  download(xlsxWorkbook([{name:`日均价_${metricName}`, xml:xlsxTableSheet(headers, data)}]), `日均价表_${rangeLabel(scope.days)}_${metricName}_${end}.xlsx`);
+}
 function exportExcel(kind){
   if (kind === "matrix") return exportMatrixExcel();
   if (kind === "intraday") return exportIntradayExcel();
+  if (kind === "daily") return exportDailyExcel();
   return exportSimpleExcel(kind);
 }
 function exportCsv(kind){
@@ -1218,6 +1392,15 @@ function startPolling(){
 /* ------------------------------------------------------------------ 启动 */
 function boot(){
   renderHeader();
+  selectDailyTop();
+  renderDaily();
+  $("#dailyRange").onchange = () => { selectDailyTop(); renderDaily(); };
+  $("#dailyMetric").onchange = () => { selectDailyTop(); renderDaily(); };
+  $("#dailyTableTab").onclick = () => setDailyTab("table");
+  $("#dailyChartTab").onclick = () => setDailyTab("chart");
+  $("#dailyTop").onclick = () => { selectDailyTop(); renderDailyChips(); renderDailyChart(); };
+  $("#dailyAll").onclick = () => { selectDailyAll(); renderDailyChips(); renderDailyChart(); };
+  $("#dailyClear").onclick = () => { dailySelected = []; renderDailyChips(); renderDailyChart(); };
   fillIntraMonths();
   fillMatrixMonths();
   selectIntraTop();
@@ -1268,7 +1451,7 @@ function boot(){
     const now = document.documentElement.dataset.theme
       || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     document.documentElement.dataset.theme = now === "dark" ? "light" : "dark";
-    renderIntraday(); renderMatrix(); renderRank(); renderDistribution(); renderHeat();
+    renderDaily(); renderIntraday(); renderMatrix(); renderRank(); renderDistribution(); renderHeat();
   };
   setupConsole();
 }

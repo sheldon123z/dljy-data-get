@@ -67,6 +67,11 @@ textarea { min-height: 72px; resize: vertical; line-height: 1.55; }
 input:focus, select:focus, textarea:focus { border-color: var(--mint); box-shadow: 0 0 0 2px rgba(88,214,197,.1); }
 .field-help { margin: -4px 0 12px; color: #8ca3ad; font-size: 10px; line-height: 1.6; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.day-presets { display: flex; gap: 7px; margin: -4px 0 12px; flex-wrap: wrap; }
+.day-presets button { flex: 1 1 auto; min-width: 56px; background: #0b1b29; color: #8ca3ad; border: 1px solid #29475a; padding: 7px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.day-presets button:hover { border-color: var(--mint); color: #d5e2e6; }
+.day-presets button.active { border-color: var(--mint); color: var(--mint); background: rgba(88,214,197,.1); }
+.heading-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .save-button { width: 100%; margin-top: 3px; }
 .task-status { margin-top: 17px; display: grid; grid-template-columns: 1fr auto; gap: 8px; color: #94a8b0; font-size: 10px; }
 .task-status strong { color: var(--mint); }

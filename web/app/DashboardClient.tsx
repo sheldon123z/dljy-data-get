@@ -59,6 +59,11 @@ const PROVIDERS: Record<string, { baseUrl: string; model: string }> = {
   custom: { baseUrl: "", model: "" },
 };
 const BIN_ORDER = ["<0", "0-100", "100-200", "200-300", "300-400", "400-500", "500+"];
+const DAY_PRESETS = [7, 30, 90, 180] as const;
+
+function rangeLabel(days: number) {
+  return days === 180 ? "近半年" : `近${days}天`;
+}
 const BIN_COLORS: Record<string, string> = {
   "<0": "#7052ce",
   "0-100": "#3c83f6",
@@ -406,6 +411,35 @@ export default function DashboardClient() {
     }
   }
 
+  function downloadCsv() {
+    if (!rows.length) {
+      setStatus("当前没有可下载的数据");
+      return;
+    }
+    const headers = [
+      "省份", "区域代码", "交易日", "实时均价(元/MWh)", "日前均价(元/MWh)", "分时点数",
+      ...BIN_ORDER.map((label) => `${label}元/MWh时点数`),
+    ];
+    const lines = rows.map((row) => [
+      row.province, row.provinceCode, row.tradeDate,
+      row.realTimeAvg ?? "", row.dayAheadAvg ?? "", row.pointCount,
+      ...BIN_ORDER.map((label) => row.distribution[label] ?? 0),
+    ]);
+    const csv = [headers, ...lines]
+      .map((cells) => cells.map((cell) => {
+        const text = String(cell ?? "");
+        return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }).join(","))
+      .join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const link = document.createElement("a");
+    link.download = `电力现货价格_${rangeLabel(days)}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setStatus(`已下载 ${rows.length} 行数据（${rangeLabel(days)}）`);
+  }
+
   return (
     <main>
       <header className="topbar">
@@ -429,6 +463,21 @@ export default function DashboardClient() {
           <label>采集数据长度（天）
             <input type="number" min="1" max="366" value={days} onChange={(event) => setDays(Math.max(1, Math.min(366, Number(event.target.value) || 1)))} />
           </label>
+          <div className="day-presets" role="group" aria-label="常用数据周期">
+            {DAY_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={days === preset ? "active" : ""}
+                onClick={() => {
+                  setDays(preset);
+                  loadData(preset).catch((error) => setStatus(error.message));
+                }}
+              >
+                {rangeLabel(preset)}
+              </button>
+            ))}
+          </div>
           <label>① 数据采集 Authorization <small>{settings?.tokenSet ? `当前 ${settings.tokenMasked}` : "必填：尚未设置"}</small>
             <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="粘贴完整 Authorization；Bearer 前缀请保留" autoComplete="off" />
           </label>
@@ -473,7 +522,10 @@ export default function DashboardClient() {
       <section className="section" id="overview">
         <div className="section-heading">
           <div><p>MARKET OVERVIEW</p><h2>所选周期市场概览</h2></div>
-          <button className="text-button" onClick={() => loadData(days).catch((error) => setStatus(error.message))}>刷新数据</button>
+          <div className="heading-actions">
+            <button className="text-button" onClick={() => loadData(days).catch((error) => setStatus(error.message))}>刷新数据</button>
+            <button className="text-button" onClick={downloadCsv}>下载数据（CSV）</button>
+          </div>
         </div>
         <div className="metric-grid">
           <article><small>覆盖交易日</small><strong>{stats.dates.length}</strong><span>设定 {days} 天</span></article>

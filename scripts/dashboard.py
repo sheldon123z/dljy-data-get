@@ -202,7 +202,7 @@ def build_profiles(raw_dir: Path) -> dict:
     return grouped
 
 
-def build_rolling_profiles(raw_dir: Path, dates: list[str], windows: tuple[int, ...] = (7, 14, 30)) -> dict:
+def build_rolling_profiles(raw_dir: Path, dates: list[str], windows: tuple[int, ...] = (7, 14, 30, 180)) -> dict:
     """按最近 N 个交易日汇总各区域的同一时点均价，供跨省日内曲线对比。"""
     date_sets = {window: set(dates[-window:]) for window in windows if dates[-window:]}
     sums: dict[int, dict[tuple[str, str], list]] = {
